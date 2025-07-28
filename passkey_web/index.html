@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Passkey POC</title>
+    <script type="module">
+        import {registerPasskey} from "./src/register.js";
+        import {loginWithPasskey} from "./src/auth.js";
+
+        window.register = async () => {
+            const username = document.getElementById("username").value;
+            if (!username) return alert("Please enter username");
+            try {
+                const result = await registerPasskey(username);
+                alert("✅ Registered successfully");
+            } catch (err) {
+                console.error(err);
+                alert("❌ Registration failed");
+            }
+        };
+
+        window.login = async () => {
+            const username = document.getElementById("username").value;
+            if (!username) return alert("Please enter username");
+            try {
+                const result = await loginWithPasskey(username);
+                alert("✅ Authentication successful");
+            } catch (err) {
+                console.error(err);
+                alert("❌ Authentication failed");
+            }
+        };
+    </script>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 400px;
+            margin: 4rem auto;
+            text-align: center;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.6rem;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        button {
+            padding: 0.6rem 1rem;
+            font-size: 1rem;
+            margin: 0.5rem;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<h2>🔐 Passkey Demo</h2>
+<input id="username" placeholder="Enter username (email)"/>
+<br/>
+<button onclick="register()">Register</button>
+<button onclick="login()">Login</button>
+</body>
+</html>

@@ -1,0 +1,61 @@
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from config import Config
+from fido.service import (
+    start_registration,
+    finish_registration,
+    start_authentication,
+    finish_authentication,
+)
+from models import RegisterBeginRequest, RegisterCompleteRequest, AuthBeginRequest, AuthCompleteRequest
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=Config.ALLOWED_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+
+@app.post("/register/begin")
+def register_options(payload: RegisterBeginRequest):
+    public_key, challenge_token = start_registration(payload.username)
+    return JSONResponse(content={
+        "publicKey": public_key['publicKey'],
+        "challenge_token": challenge_token,
+    })
+
+
+@app.post("/register/complete")
+def register_verify(payload: RegisterCompleteRequest):
+    finish_registration(payload.attestation, payload.challenge_token)
+    return {"status": "OK"}
+
+
+@app.post("/authenticate/begin")
+def authenticate_begin(payload: AuthBeginRequest):
+    try:
+        public_key, challenge_token = start_authentication(payload.username)
+        return JSONResponse(content={
+            "publicKey": public_key['publicKey'],
+            "challenge_token": challenge_token,
+        })
+    except ValueError:
+        raise HTTPException(status_code=404, detail="User Not Found, No credentials registered")
+
+
+@app.post("/authenticate/complete")
+def authenticate_complete(payload: AuthCompleteRequest):
+    try:
+        finish_authentication(payload.assertion, payload.challenge_token)
+        return JSONResponse(content={"status": "OK"})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, port=8000, log_level="info")
