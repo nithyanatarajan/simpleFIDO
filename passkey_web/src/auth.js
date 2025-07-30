@@ -1,18 +1,18 @@
-import {base64urlToBuffer, bufferToBase64url} from "./utils.js";
+import {base64urlToBuffer, bufferToBase64url} from './utils.js';
 
-export async function loginWithPasskey(username) {
+export async function loginWithPasskey(username, account_token) {
   const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
   // 1. Begin authentication → get `publicKey` and `challenge_token`
   const beginRes = await fetch(`${apiBase}/authenticate/begin`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username })
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username})
   });
 
-  if (!beginRes.ok) throw new Error("Failed to begin authentication");
+  if (!beginRes.ok) throw new Error('Failed to begin authentication');
 
-  const { publicKey, challenge_token } = await beginRes.json();
+  const {publicKey, challenge_token} = await beginRes.json();
 
   // 2. Decode publicKey.challenge and allowCredentials[].id
   publicKey.challenge = base64urlToBuffer(publicKey.challenge);
@@ -24,7 +24,7 @@ export async function loginWithPasskey(username) {
   }
 
   // 3. Call WebAuthn API
-  const cred = await navigator.credentials.get({ publicKey });
+  const cred = await navigator.credentials.get({publicKey});
 
   // 4. Convert to JSON-safe structure
   const assertion = {
@@ -43,12 +43,12 @@ export async function loginWithPasskey(username) {
 
   // 5. Complete authentication
   const completeRes = await fetch(`${apiBase}/authenticate/complete`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ assertion, challenge_token })
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({assertion, challenge_token, account_token})
   });
 
-  if (!completeRes.ok) throw new Error("Authentication failed");
+  if (!completeRes.ok) throw new Error('Authentication failed');
 
   return await completeRes.json();
 }
