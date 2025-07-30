@@ -7,5 +7,6 @@ dependencies = [
     "uvicorn[standard]",
     "python-jose",
     "fido2",
-    "pyjwt"
+    "pyjwt",
+    "httpx"
 ]
