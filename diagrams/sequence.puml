@@ -1,0 +1,71 @@
+@startuml
+title Passkey Registration & Authentication with Custom WebAuthn Extension\n(includes Pre-authentication JWT Issuance)
+
+actor User
+
+participant "Web Client\n(Vanilla JS)" as Client
+participant "Identity Provider (IdP)\n(Stub/Future: Keycloak)" as IdP
+participant "Relying Party (RP) Server\n(FastAPI Backend)" as RP
+participant "Extension Server\n(Token Validator)" as ExtnServer
+
+== 🔐 Pre-authentication ==
+note over User: Initial login to get scoped JWT
+User -> Client: Visits app
+Client -> IdP: POST /token/generate { username, password, account_id }
+IdP -> IdP: Validate credentials
+IdP --> Client: { runtime_jwt (exp, sub, aud) }
+
+== 🔏 Registration==
+note over User: Registration begins
+User -> Client: Enters username
+Client -> RP: POST /register/begin { username }
+RP -> RP: Generate challenge + options
+RP --> Client: { publicKeyCredentialCreationOptions, challenge_token }
+
+note right of Client
+- Inject standard + custom extensions into publicKey:
+  • credProps
+  • example.accountProps.token = runtime_jwt
+end note
+
+Client -> Client: navigator.credentials.create({ publicKey })
+Client -> RP: POST /register/complete\n{ attestation, challenge_token, clientExtensions }
+
+RP -> RP: Validate attestation, challenge_token
+RP -> RP: Extract & verify clientExtensions
+
+alt accountProps exists
+  RP -> ExtnServer: POST /extensions/validate\n{ token }
+  ExtnServer --> RP: { status: valid, sub, account_id }
+end
+RP --> Client: ✅ Registration successful
+
+RP --> Client: Registration successful
+
+== 🔓 Authentication Flow ==
+note over User: Login Begins
+User -> Client: Enters username
+
+Client -> RP: POST /authenticate/begin\n{ username }
+RP --> Client: publicKeyCredentialRequestOptions + challenge_token
+
+note right of Client
+- Inject standard + custom extensions into publicKey:
+  • credProps
+  • example.accountProps.token = runtime_jwt
+end note
+
+Client -> Client: navigator.credentials.get({ publicKey })
+Client -> RP: POST /authenticate/complete\n{ assertion, challenge_token, clientExtensions }
+
+RP -> RP: Validate assertion, challenge_token
+RP -> RP: Extract & verify clientExtensions
+
+alt accountProps exists
+  RP -> ExtnServer: POST /extensions/validate\n{ token }
+  ExtnServer --> RP: { status: valid, sub, account_id }
+end
+
+RP --> Client: ✅ Authentication successful
+
+@enduml
