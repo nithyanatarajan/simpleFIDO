@@ -18,6 +18,6 @@ class Config:
     ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
     # Extension validation URL
-    EXT_SERVER_URL = os.getenv("EXTENSION_VALIDATION_URL", "http://localhost:9000/extensions/validate")
+    EXT_SERVER_URL = os.getenv("EXTENSION_VALIDATION_URL", "http://localhost:9000/extensions")
     EXT_SERVER_TIMEOUT = 2  # seconds
     EXT_MAX_RETRIES = 3

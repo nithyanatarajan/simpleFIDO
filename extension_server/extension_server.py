@@ -5,8 +5,31 @@ import jwt
 from accounts import VALID_ACCOUNTS
 from config import Config
 from models import ExtensionRequest
+from models import AuthenticateRequest
+from generate_token import generate_token
 
 app = APIRouter()
+
+@app.post("/extensions/authenticate")
+async def authenticate(payload: AuthenticateRequest):
+    try:
+        allowed_accounts = VALID_ACCOUNTS.get(payload.username, [])
+        if payload.account not in allowed_accounts:
+            return JSONResponse(
+                status_code=403,
+                content={'status': 'invalid', 'reason': 'Unauthorized account access'}
+            )
+
+        jwt_token = generate_token(payload.username, payload.account)
+
+        return JSONResponse(status_code=200, content={
+            "jwt_token": jwt_token
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=401,
+            content={'status': 'invalid', 'reason': str(e)}
+        )
 
 
 @app.post("/extensions/validate")

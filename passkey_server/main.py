@@ -26,7 +26,7 @@ app.add_middleware(
 
 @app.post("/register/begin")
 def register_options(payload: RegisterBeginRequest):
-    public_key, challenge_token = start_registration(payload.username)
+    public_key, challenge_token = start_registration(payload.username, payload.account, payload.org_id)
     return JSONResponse(content={
         "publicKey": public_key['publicKey'],
         "challenge_token": challenge_token,
@@ -41,11 +41,15 @@ def register_verify(payload: RegisterCompleteRequest):
 
 @app.post("/authenticate/begin")
 def authenticate_begin(payload: AuthBeginRequest):
-    public_key, challenge_token = start_authentication(payload.username)
-    return JSONResponse(content={
-        "publicKey": public_key['publicKey'],
-        "challenge_token": challenge_token,
-    })
+    try:
+        print('auth begin')
+        public_key, challenge_token = start_authentication(payload.username, payload.org_id)
+        return JSONResponse(content={
+            "publicKey": public_key['publicKey'],
+            "challenge_token": challenge_token,
+        })
+    except ValueError:
+        raise HTTPException(status_code=404, detail="User Not Found, No credentials registered")
 
 
 @app.post("/authenticate/complete")

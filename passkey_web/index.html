@@ -14,14 +14,24 @@
 
 <form data-action="register">
     <input name="username" placeholder="Enter username (email)" required/>
+    <input name="account" placeholder="Enter account" required/>
     <button type="submit">Register</button>
 </form>
 
 <form data-action="login">
-    <input name="username" placeholder="Enter username (email)" required/>
-    <input name="accountToken" placeholder="Enter account token (JWT)" required/>
+    <input name="username" placeholder="Enter username (email)"/>
     <button type="submit">Login</button>
 </form>
+
+<div style="visibility: hidden;" id="sign-in-with-passkey">
+    <div style="margin-bottom: 10px; margin-top: -20px">or</div>
+
+    <form data-action="loginwithpasskey">
+        <button type="submit">🔐 Sign in with Passkey</button>
+    </form>
+</div>
+
+
 
 <pre id="output"></pre>
 </body>

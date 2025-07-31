@@ -12,7 +12,7 @@ def verify_extension_token_with_retries(extension_token: str):
     for attempt in range(Config.EXT_MAX_RETRIES):
         try:
             response = httpx.post(
-                Config.EXT_SERVER_URL,
+                Config.EXT_SERVER_URL + '/validate',
                 json={"account_token": extension_token},
                 timeout=Config.EXT_SERVER_TIMEOUT,
             )

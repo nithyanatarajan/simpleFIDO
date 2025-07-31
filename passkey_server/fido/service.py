@@ -1,36 +1,62 @@
 import base64
 import os
+import httpx
 
 from fido2.server import Fido2Server
 from fido2.webauthn import PublicKeyCredentialRpEntity, \
     PublicKeyCredentialUserEntity, PublicKeyCredentialDescriptor, PublicKeyCredentialType
+from fastapi import HTTPException
 
 from config import Config
 from exceptions import ExtensionValidationError
 from fido.store import store_credential, get_credentials_for_username, get_credential, update_sign_count
 from utils.jwt import decode_challenge_token, encode_challenge_token
 from utils.retry import verify_extension_token_with_retries
+from utils.extensions_builder import get_webauthn_extensions_for_org
 
 rp_entity = PublicKeyCredentialRpEntity(id=Config.RP_ID, name=Config.RP_NAME)
 server = Fido2Server(rp_entity)
 
 
 # ---- Registration ----
-def start_registration(username: str):
+def start_registration(username: str, account: str, org_id: str):
     user_handle = os.urandom(16)
     user = PublicKeyCredentialUserEntity(
         id=user_handle,
         name=username,
         display_name=username
     )
+
+    extensions = get_webauthn_extensions_for_org(org_id)
+
+
+    print(extensions,'extensions')
+    resident_key_setting = "required" if extensions.get('discoverable') else "discouraged"
+    
+    print(resident_key_setting,'resident_key_setting')
+
+    response = httpx.post(
+            Config.EXT_SERVER_URL+ '/authenticate',
+            json={"username": username, "account": account},
+            timeout=Config.EXT_SERVER_TIMEOUT,
+        )
+    extended_auth_token = response.json()
+
+    print(extended_auth_token,'extended_auth_token')
+
+    extensions['extended_auth_token'] = extended_auth_token['jwt_token']
+
     options, state = server.register_begin(user=user,
                                            credentials=[],
-                                           user_verification="discouraged",
-                                           authenticator_attachment="cross-platform")
+                                           resident_key_requirement=resident_key_setting,
+                                           authenticator_attachment=extensions.get('authenticator_attachment'),
+                                           user_verification="preferred",
+                                           extensions=extensions)
 
     # Embed username + user_handle in challenge token
     state["username"] = username
     state["user_handle"] = base64.urlsafe_b64encode(user_handle).decode("utf-8")
+
     return dict(options), (encode_challenge_token(state))
 
 
@@ -48,6 +74,7 @@ def finish_registration(attestation: dict, challenge_token: str):
     print("Registered Credential ID:", auth_data.credential_data.credential_id)
     print("Public Key:", auth_data.credential_data.public_key)
 
+    print(auth_data.credential_data.credential_id, 'credID')
     # 5. Save credential to in-memory store
     store_credential(
         credential_id=auth_data.credential_data.credential_id,
@@ -63,21 +90,35 @@ def finish_registration(attestation: dict, challenge_token: str):
 
 
 # ---- Authentication ----
-def start_authentication(username: str):
-    credentials = get_credentials_for_username(username)
-    if not credentials:
-        raise ValueError("User Not Found, No credentials registered")
+def start_authentication(username: str, org_id: str):
+        
+    extensions = get_webauthn_extensions_for_org(org_id)
+    discoverable = extensions.get('discoverable')
 
-    allow_credentials = [
-        PublicKeyCredentialDescriptor(
-            id=cred["credential_id"],
-            type=PublicKeyCredentialType.PUBLIC_KEY
+    if not discoverable and not username:
+        raise HTTPException(status_code=404, detail="username is required")
+
+    if discoverable:
+        options, state = server.authenticate_begin(
+            credentials=[],
+            user_verification="preferred"  # or "required"
         )
-        for cred in credentials
-    ]
+        state["org_id"] = org_id  # or any tracking info
+    else:
+        credentials = get_credentials_for_username(username)
+        if not credentials:
+            raise ValueError("No credentials registered")
 
-    options, state = server.authenticate_begin(allow_credentials)
-    state["username"] = username  # save for final step
+        allow_credentials = [
+            PublicKeyCredentialDescriptor(
+                id=cred["credential_id"],
+                type=PublicKeyCredentialType.PUBLIC_KEY
+            )
+            for cred in credentials
+        ]
+
+        options, state = server.authenticate_begin(allow_credentials)
+        state["username"] = username  # save for final step
 
     return dict(options), encode_challenge_token(state)
 
@@ -91,11 +132,20 @@ def b64url_decode(data: str) -> bytes:
 def finish_authentication(assertion: dict, challenge_token: str, account_token: str) -> bool:
     # 1. Decode challenge token (stateless state)
     state = decode_challenge_token(challenge_token)
-    username = state["username"]
-
+    
     # 2. Lookup stored credential by ID
-    credential_id = b64url_decode(assertion["rawId"])
+    credential_id = b64url_decode(assertion["id"])
+    print(credential_id, 'credential_id')
+
     stored = get_credential(credential_id)
+    print(stored, 'stored')
+
+    print(state,'state')
+    username = state.get('username') or stored.get('username')
+
+
+    print(username, 'username')
+
     if not stored:
         raise ValueError("Credential not found")
 
@@ -127,3 +177,4 @@ def finish_authentication(assertion: dict, challenge_token: str, account_token: 
 
     print("✅ AUTHENTICATION SUCCESS")
     return True
+    

@@ -7,23 +7,28 @@ export async function handleFormSubmit(event) {
   const form = event.target;
   const action = form.dataset.action;
   const username = form.username?.value.trim();
-  const accountToken = form.accountToken?.value.trim(); // Optional for register
+  const account = form.account?.value.trim();
   const output = document.querySelector('#output');
 
-  if (!username || (action === 'login' && !accountToken)) {
+  if (!username && action==='register') {
     output.textContent = '⚠️ Please enter required fields.';
     return;
   }
 
+  console.log('username', username)
   try {
     if (action === 'register') {
-      const result = await registerPasskey(username);
+      const result = await registerPasskey(username, account);
       output.textContent = '✅ Registered successfully';
       console.log(JSON.stringify(result, null, 2));
     } else if (action === 'login') {
-      const result = await loginWithPasskey(username, accountToken);
+      const result = await loginWithPasskey(username);
       output.textContent = '✅ Authentication successful';
       console.log(JSON.stringify(result, null, 2));
+    }else if(action === 'loginwithpasskey'){
+       const result = await loginWithPasskey();
+        output.textContent = '✅ Authentication successful';
+        console.log(JSON.stringify(result, null, 2));
     }
   } catch (err) {
     console.error(err);
