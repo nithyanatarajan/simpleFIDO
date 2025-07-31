@@ -24,39 +24,57 @@ trusted part of the security architecture and enforces business logic before all
 
 ---
 
-## 📦 Input & Output
+## 🛠️ Setup
 
-### 🔹 Sample Request
+### 1. Setup Python Environment
 
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR..."
-}
+```bash
+uv venv
+source .venv/bin/activate
 ```
 
-### 🔸 Success Response
+### 2. Install Dependencies
 
-```json
-{
-  "status": "valid",
-  "account_id": "acc_12345",
-  "user": "user@example.com"
-}
-```
-
-### 🔸 Error Response
-
-```json
-{
-  "status": "invalid",
-  "reason": "Signature verification failed"
-}
+```bash
+uv sync --all-extras --dev
 ```
 
 ---
 
-## 🧱 Why Keep It Separate?
+## ▶️ Run the Server
 
-- ✅ **Security Boundary** – Isolates auth logic from FIDO2 protocol
-- 🧪 **Testability** – Can be stubbed or mocked in test suites
-- 📦 **Modular** – Can be replaced with production-grade microservice later
+```bash
+uvicorn extension_server:app --host 0.0.0.0 --port 9000 --reload
+```
+
+Server will be live at: [http://localhost:9000](http://localhost:9000)
+
+---
+
+## 🧪 Generate a Test JWT
+
+Use [generate_token.py](generate_token.py) to create a JWT token for testing.
+
+```bash
+# valid account
+TOKEN=$(python generate_token.py --user user1@example.com --account acc001)
+
+# invalid account
+TOKEN=$(python generate_token.py --user user1@example.com --account acc003)
+
+# invalid account
+TOKEN=$(python generate_token.py --account acc003)
+```
+
+---
+
+## 📤 Test the API
+
+```bash
+curl -X POST http://localhost:9000/extensions/validate \
+  -H "Content-Type: application/json" \
+  -d "{\"account_token\": \"$TOKEN\"}"
+
+```
+
+Expected: 200 OK with status `valid` if the account is authorized.
