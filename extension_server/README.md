@@ -53,18 +53,7 @@ Server will be live at: [http://localhost:9000](http://localhost:9000)
 
 ## 🧪 Generate a Test JWT
 
-Use [generate_token.py](generate_token.py) to create a JWT token for testing.
-
-```bash
-# valid account
-TOKEN=$(python generate_token.py --user user1@example.com --account acc001)
-
-# invalid account
-TOKEN=$(python generate_token.py --user user1@example.com --account acc003)
-
-# invalid account
-TOKEN=$(python generate_token.py --account acc003)
-```
+Use `/token/generate` from [Identity Provider](../stub_identity_provider/README.md) to create a JWT token for testing.
 
 ---
 
