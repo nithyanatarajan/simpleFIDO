@@ -6,15 +6,6 @@
       "level": 2,
       "enforce": true
     },
-    "largeBlob": false,
-    "payment": {
-      "payeeName": "Org A Store",
-      "total": {
-        "currency": "USD",
-        "value": "9.99"
-      }
-    },
-    "txAuthSimple": "Approve login for OrgA",
     "custom_metadata": {
         "organization_name": "ORGA"
     }
@@ -23,9 +14,6 @@
     "discoverable": false,
     "authenticator_attachment": "platform",
     "credProps": false,
-    "credProtect": false,
-    "largeBlob": true,
-    "payment": false,
-    "txAuthSimple": "Authorize device login for OrgB"
+    "credProtect": false
   }
 }
