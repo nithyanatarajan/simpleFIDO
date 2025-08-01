@@ -1,7 +1,9 @@
 # ext_utils.py
 
-import httpx
 import time
+
+import httpx
+
 from config import Config
 from exceptions import ExtensionValidationError
 

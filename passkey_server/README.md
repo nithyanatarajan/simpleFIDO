@@ -6,7 +6,6 @@ FastAPI backend to handle WebAuthn registration and authentication flow, includi
 
 - WebAuthn Registration & Authentication APIs
 - Extension validation:
-    - `appid` (standard read extension)
     - `credProps` (standard)
     - `accountProps` (custom extension validated against a separate service)
 

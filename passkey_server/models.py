@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-# Schemas
+
 class RegisterBeginRequest(BaseModel):
     username: str
 

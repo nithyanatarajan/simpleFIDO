@@ -3,14 +3,16 @@ from typing import Dict, Any
 # Global in-memory credential store
 CREDENTIAL_STORE: Dict[bytes, Dict[str, Any]] = {}
 
+
 def store_credential(
-    credential_id: bytes,
-    user_handle: bytes,
-    public_key: Any,
-    sign_count: int,
-    username: str,
-    rp_id: str,
-    credential_data: Any
+        credential_id: bytes,
+        user_handle: bytes,
+        public_key: Any,
+        sign_count: int,
+        username: str,
+        rp_id: str,
+        credential_data: Any,
+        is_resident_key: bool = False
 ) -> None:
     CREDENTIAL_STORE[credential_id] = {
         "credential_id": credential_id,
@@ -19,17 +21,22 @@ def store_credential(
         "sign_count": sign_count,
         "username": username,
         "rp_id": rp_id,
-        "credential_data": credential_data
+        "credential_data": credential_data,
+        "is_resident_key": is_resident_key
     }
+
 
 def get_credential(credential_id: bytes) -> Dict[str, Any] | None:
     return CREDENTIAL_STORE.get(credential_id)
 
+
 def get_credentials_for_user(user_handle: bytes) -> list[Dict[str, Any]]:
     return [cred for cred in CREDENTIAL_STORE.values() if cred["user_handle"] == user_handle]
 
+
 def get_credentials_for_username(username: str) -> list[Dict[str, Any]]:
     return [cred for cred in CREDENTIAL_STORE.values() if cred["username"] == username]
+
 
 def update_sign_count(credential_id: bytes, new_sign_count: int) -> None:
     if credential_id in CREDENTIAL_STORE:
