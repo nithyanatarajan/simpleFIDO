@@ -1,5 +1,5 @@
 @startuml
-title Passkey Registration & Authentication with Custom WebAuthn Extension\n(includes Pre-authentication JWT Issuance)
+title Passkey Registration & Authentication with Custom WebAuthn Extension (Server Side Validation)
 
 actor User
 
@@ -8,14 +8,14 @@ participant "Identity Provider (IdP)\n(Stub/Future: Keycloak)" as IdP
 participant "Relying Party (RP) Server\n(FastAPI Backend)" as RP
 participant "Extension Server\n(Token Validator)" as ExtnServer
 
-== 🔐 Pre-authentication ==
+== Pre-authentication ==
 note over User: Initial login to get scoped JWT
 User -> Client: Visits app
 Client -> IdP: POST /token/generate { username, password, account_id }
 IdP -> IdP: Validate credentials
 IdP --> Client: { runtime_jwt (exp, sub, aud) }
 
-== 🔏 Registration==
+== Registration==
 note over User: Registration begins
 User -> Client: Enters username
 Client -> RP: POST /register/begin { username }
@@ -38,11 +38,10 @@ alt accountProps exists
   RP -> ExtnServer: POST /extensions/validate\n{ token }
   ExtnServer --> RP: { status: valid, sub, account_id }
 end
-RP --> Client: ✅ Registration successful
 
 RP --> Client: Registration successful
 
-== 🔓 Authentication Flow ==
+== Authentication Flow ==
 note over User: Login Begins
 User -> Client: Enters username
 
@@ -66,6 +65,6 @@ alt accountProps exists
   ExtnServer --> RP: { status: valid, sub, account_id }
 end
 
-RP --> Client: ✅ Authentication successful
+RP --> Client: Authentication successful
 
 @enduml
