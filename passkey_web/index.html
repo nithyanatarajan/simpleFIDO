@@ -4,25 +4,42 @@
     <meta charset="UTF-8"/>
     <title>Passkey POC</title>
     <script type="module">
-        import { handleFormSubmit } from './src/main.js';
-        window.handleFormSubmit = handleFormSubmit;
+      import {handleGenerateToken, handleLogin, handleRegister} from './src/main.js';
+
+      window.handleGenerateToken = handleGenerateToken;
+      window.handleRegister = handleRegister;
+      window.handleLogin = handleLogin;
     </script>
     <link rel="stylesheet" href="./styles.css"/>
 </head>
 <body>
 <h2>🔐 Passkey + Extension Demo</h2>
 
+<!-- 🔑 Token Generation -->
+<h3>1. Generate Token</h3>
+<form data-action="generate">
+    <input name="username" placeholder="Enter username (email)" required/>
+    <input name="password" type="password" placeholder="Enter password" required/>
+    <input name="account_id" placeholder="Enter account ID" required/>
+    <button type="submit">Generate Token</button>
+</form>
+
+<!-- 📝 Registration -->
+<h3>2. Register</h3>
 <form data-action="register">
     <input name="username" placeholder="Enter username (email)" required/>
     <button type="submit">Register</button>
 </form>
 
+<!-- 🔓 Authentication -->
+<h3>3. Authenticate</h3>
 <form data-action="login">
     <input name="username" placeholder="Enter username (email)" required/>
-    <input name="accountToken" placeholder="Enter account token (JWT)" required/>
     <button type="submit">Login</button>
 </form>
 
+<h3>📤 Output</h3>
 <pre id="output"></pre>
+
 </body>
 </html>

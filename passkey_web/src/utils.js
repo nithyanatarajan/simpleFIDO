@@ -17,3 +17,48 @@ export function bufferToBase64url(buffer) {
   }
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
+
+export function withExtensions(publicKeyOptions, accountToken) {
+  const isRegistration = !!publicKeyOptions.user; // 'user' field is only present in registration
+
+  return {
+    ...publicKeyOptions,
+    extensions: {
+      ...(isRegistration && {credProps: true}),
+      accountProps: {token: accountToken},
+    },
+  };
+}
+
+export function prepareRegistrationAttestationPayload(credential) {
+  console.log(credential.getClientExtensionResults?.());
+  return {
+    id: credential.id,
+    rawId: bufferToBase64url(credential.rawId),
+    type: credential.type,
+    response: {
+      attestationObject: bufferToBase64url(credential.response.attestationObject),
+      clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+    },
+    extensions: credential.getClientExtensionResults?.() || {}
+  };
+}
+
+export function prepareAuthenticationAssertionPayload(assertion) {
+  console.log(assertion.getClientExtensionResults?.());
+  return {
+    id: assertion.id,
+    type: assertion.type,
+    rawId: bufferToBase64url(assertion.rawId),
+    response: {
+      clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
+      authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
+      signature: bufferToBase64url(assertion.response.signature),
+      userHandle: assertion.response.userHandle
+        ? bufferToBase64url(assertion.response.userHandle)
+        : null,
+      clientExtensionResults: assertion.getClientExtensionResults?.() || {}
+    }
+  };
+}
+

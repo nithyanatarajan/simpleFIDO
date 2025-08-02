@@ -1,54 +1,62 @@
-import {base64urlToBuffer, bufferToBase64url} from './utils.js';
+import {base64urlToBuffer, withExtensions, prepareAuthenticationAssertionPayload} from './utils.js';
 
-export async function loginWithPasskey(username, account_token) {
-  const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
-  // 1. Begin authentication → get `publicKey` and `challenge_token`
-  const beginRes = await fetch(`${apiBase}/authenticate/begin`, {
+export async function loginWithPasskey(username, accountToken) {
+  const apiBase = import.meta.env.VITE_API_BASE_URL;
+
+  // 1. Begin authentication
+  const res = await fetch(`${apiBase}/authenticate/begin`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username})
+    body: JSON.stringify({username, account_token: accountToken}),
   });
 
-  if (!beginRes.ok) throw new Error('Failed to begin authentication');
+  if (!res.ok) {
+    const {detail} = await res.json();
+    throw new Error(`Authentication begin failed: ${detail}`);
+  }
 
-  const {publicKey, challenge_token} = await beginRes.json();
+  const {publicKey, challenge_token} = await res.json();
 
-  // 2. Decode publicKey.challenge and allowCredentials[].id
+  // 2. Convert to ArrayBuffers
   publicKey.challenge = base64urlToBuffer(publicKey.challenge);
   if (publicKey.allowCredentials) {
     publicKey.allowCredentials = publicKey.allowCredentials.map(cred => ({
       ...cred,
-      id: base64urlToBuffer(cred.id)
+      id: base64urlToBuffer(cred.id),
     }));
   }
 
-  // 3. Call WebAuthn API
-  const cred = await navigator.credentials.get({publicKey});
+  // 3. Inject extensions
+  const publicKeyWithExtensions = withExtensions(publicKey, accountToken);
+  console.log("PublicKey options passed to navigator.credentials.get:", publicKeyWithExtensions);
 
-  // 4. Convert to JSON-safe structure
-  const assertion = {
-    id: cred.id,
-    type: cred.type,
-    rawId: bufferToBase64url(cred.rawId),
-    response: {
-      authenticatorData: bufferToBase64url(cred.response.authenticatorData),
-      clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
-      signature: bufferToBase64url(cred.response.signature),
-      userHandle: cred.response.userHandle
-        ? bufferToBase64url(cred.response.userHandle)
-        : null
-    }
-  };
-
-  // 5. Complete authentication
-  const completeRes = await fetch(`${apiBase}/authenticate/complete`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({assertion, challenge_token, account_token})
+  // 4. Call WebAuthn
+  const assertion = await navigator.credentials.get({
+    publicKey: publicKeyWithExtensions,
   });
 
-  if (!completeRes.ok) throw new Error('Authentication failed');
+  if (!assertion) {
+    throw new Error('Credential assertion failed or was cancelled.');
+  }
 
-  return await completeRes.json();
+  // 5. Prepare and send final assertion
+  const assertionPayload = prepareAuthenticationAssertionPayload(assertion);
+
+  const finalRes = await fetch(`${apiBase}/authenticate/complete`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      assertion: assertionPayload,
+      challenge_token,
+      account_token: accountToken,
+    }),
+  });
+
+  if (!finalRes.ok) {
+    const {detail} = await finalRes.json();
+    throw new Error(`Authentication complete failed: ${detail}`);
+  }
+
+  return await finalRes.json();
 }
