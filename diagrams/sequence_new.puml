@@ -1,0 +1,80 @@
+@startuml
+title WebAuthn Passkey Flows with Custom Extension Server for Challenge Signing
+
+actor User
+participant "Browser (Client)" as Browser
+participant "Authenticator" as Auth
+participant "IdP (Pre-auth Server)" as IdP
+participant "RP Server (WebAuthn)" as RP
+participant "Custom Extension Server" as ExtServer
+
+== Pre-authentication Phase (JWT Issuance) ==
+User -> Browser: Opens app
+Browser -> IdP: POST /token/generate { username, password, account_id }
+IdP -> IdP: Validate credentials
+note right of IdP: Generates 2 JWTs:\n• access_token_rp (aud: rp-server)\n• access_token_ext (aud: extension-server)
+IdP --> Browser: { access_token_rp, access_token_ext }
+
+== Passkey Registration ==
+User -> Browser: Visits app, triggers registration
+Browser -> RP: POST /register/begin
+note right of RP: Authorization: Bearer access_token_rp (aud: rp-server)
+RP -> RP: Verify JWT (issuer, aud, exp)
+RP --> Browser: publicKeyCredentialCreationOptions
+Browser -> Auth: navigator.credentials.create(options)
+Auth -> Browser: Attestation response (clientDataJSON, attestationObject)
+Browser -> RP: POST /registration/complete
+note right of RP: Verifies attestation, stores credential
+
+== Passkey Authentication ==
+Browser -> RP: POST /authenticate/begin
+note right of RP: Authorization: Bearer access_token_rp (aud: rp-server)
+RP -> RP: Verify JWT (issuer, aud, exp)
+RP --> Browser: publicKeyCredentialRequestOptions
+Browser -> Auth: navigator.credentials.get(options)
+Auth -> Browser: Assertion (authenticatorData, clientDataJSON, signature)
+Browser -> RP: POST /authentication/complete
+note right of RP: Validates assertion, issues session
+
+== Custom Extension: Challenge Signing ==
+Browser -> ExtServer: POST /extensions/prepare
+note right of ExtServer: Authorization: Bearer access_token_ext (aud: extension-server)
+ExtServer -> ExtServer: Verify JWT, generate challenge (random, one-time, TTL-bound)
+ExtServer --> Browser: { challenge, metadata (optional) }
+
+Browser -> Auth: navigator.credentials.get(publicKeyOptions)
+note right of Browser
+Request includes:
+navigator.credentials.get({
+  publicKey: {
+    challenge: from Extension Server,
+    allowCredentials: [credentialId],
+    userVerification: "required"
+  }
+})
+end note
+
+note right of Auth: Authenticator signs the challenge securely
+Auth --> Browser: Assertion (authenticatorData, clientDataJSON, signature)
+
+Browser -> ExtServer: POST /extensions/validate
+note right of ExtServer
+Request includes:
+• signed challenge from extension server\\n
+• credential ID (used to look up public key)\\n
+• authenticatorData (from WebAuthn assertion)\\n
+• clientDataJSON (with signed challenge)\\n
+• signature (over authenticatorData + clientDataHash)\\n
+• extension metadata (optional, unsigned)
+end note
+
+note right of ExtServer
+Validation logic includes:
+• JWT verification (issuer, aud, exp)
+• Public key lookup by credential ID
+• Signature verification over authenticatorData + clientDataHash
+• Match challenge from JWT against clientDataJSON.challenge
+• Match expected origin with clientDataJSON.origin
+end note
+ExtServer --> Browser: { status: valid | invalid, reason? }
+@enduml
