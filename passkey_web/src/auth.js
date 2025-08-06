@@ -8,7 +8,7 @@ export async function authenticateWithPasskey(username, accountToken) {
   const res = await fetch(`${apiBase}/authenticate/begin`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username, account_token: accountToken}),
+    body: JSON.stringify({username}),
   });
 
   if (!res.ok) {

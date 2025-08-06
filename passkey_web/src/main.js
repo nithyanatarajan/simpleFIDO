@@ -1,6 +1,7 @@
 import {registerPasskey} from './register.js';
 import {authenticateWithPasskey} from './auth.js';
 import {generateTokens} from './token.js';
+import {initiateExtensionSigning, validateExtensionSignature} from './extensions.js';
 
 const AccountTokenRPSessionKey = 'accountTokenRP';
 const AccountTokenExtnSessionKey = 'accountTokenExtn';
@@ -44,7 +45,7 @@ export async function handleRegister(event) {
   }
 
   try {
-    const result = await registerPasskey(username, accountToken);
+    await registerPasskey(username, accountToken);
     output.textContent = '✅ Registered successfully.';
   } catch (err) {
     console.error(err);
@@ -65,7 +66,7 @@ export async function handleAuthenticate(event) {
   }
 
   try {
-    const result = await authenticateWithPasskey(username, accountToken);
+    await authenticateWithPasskey(username, accountToken);
     output.textContent = '✅ Authentication successful.';
   } catch (err) {
     console.error(err);
@@ -73,10 +74,42 @@ export async function handleAuthenticate(event) {
   }
 }
 
+export async function handleExtensionFlow(event) {
+  event.preventDefault();
+  const form = event.target;
+  const username = form.username?.value.trim() || sessionStorage.getItem(UsernameSessionKey);
+  const accountToken = sessionStorage.getItem(AccountTokenExtnSessionKey);
+  const output = document.querySelector('#output');
+
+  if (!username || !accountToken) {
+    output.textContent = '⚠️ Username and accountToken required. Please generate token first.';
+    return;
+  }
+
+  try {
+    output.textContent = '🔄 Calling /extensions/prepare...\n';
+    const prepareResponse = await initiateExtensionSigning(username, accountToken);
+    output.textContent += `✅ Called /extensions/prepare response\n`;
+    output.textContent += `${JSON.stringify(prepareResponse, null, 2)}\n`;
+
+
+    output.textContent += '🔄 Calling /extensions/validate...\n';
+    const validateResponse = await validateExtensionSignature(username, accountToken);
+    output.textContent += `✅ Called /extensions/validate\n`;
+    output.textContent += `${JSON.stringify(validateResponse, null, 2)}\n`;
+
+  } catch (err) {
+    console.error(err);
+    output.textContent = `❌ Error: ${err?.response?.data?.detail || err.message || 'Unknown error'}`;
+  }
+}
+
+
 const handlers = {
   generate: handleGenerateToken,
   register: handleRegister,
-  authenticate: handleAuthenticate
+  authenticate: handleAuthenticate,
+  extension: handleExtensionFlow
 };
 
 document.querySelectorAll('form[data-action]').forEach(form => {
