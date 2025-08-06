@@ -1,19 +1,25 @@
-# 🧭 FIDO2 + Passkey + WebAuthn Extensions – Architecture Overview
+# Overview: WebAuthn Passkey POC with Custom Extension Server
 
-This document describes the architecture and flow of a Passkey + FIDO2 authentication system that integrates
-**standard** and **custom WebAuthn extensions** using a **Vanilla JS client**, **FastAPI relying party backend**,
-and a **FastAPI stub extension server**.
+This proof-of-concept demonstrates how to extend the WebAuthn passkey-based registration and authentication flow with a
+secure client-to-extension-server interaction — **without misusing the `extensions` mechanism** and fully aligned with
+FIDO2/WebAuthn specifications.
+
+---
 
 ## 🎯 Goal
 
-Build a working full-cycle **passkey-based authentication** system with:
+Build a fully working, standards-compliant **passkey-based authentication** system that:
 
-- Stateless challenge validation (via **JWTs**)
-- Simple **in-memory** credential storage
-- No databases or persistent state
-- Support for real or virtual authenticators (e.g. Chrome DevTools)
-- Demonstrate real + custom WebAuthn extensions
-- Cleanly separate **authenticator logic**, **relying party validation**, and **custom domain-specific checks**
+- Uses **stateless JWT-based challenges** to simplify validation and avoid server-side storage
+- Stores credentials in **in-memory structures**, with no persistent database
+- Supports **real or virtual authenticators** (e.g., Chrome DevTools, YubiKey)
+- Separates concerns cleanly across:
+    - **Identity Provider** (JWT issuance)
+    - **Relying Party (RP) Server** (WebAuthn registration/authentication)
+    - **Extension Server** (custom domain logic)
+- Demonstrates a secure client → extension-server interaction using WebAuthn ceremony
+- Injects **custom business context** (`accountProps`) outside of the WebAuthn API — without misusing `extensions`
+- Adheres strictly to **FIDO2/WebAuthn standards** and avoids assumptions unsupported by browser APIs
 
 ---
 
@@ -33,173 +39,130 @@ Build a working full-cycle **passkey-based authentication** system with:
 
 - Form-based UI for passkey registration & login
 - Calls `navigator.credentials.create()` and `navigator.credentials.get()`
-- Injects standard + custom extensions into `publicKeyCredential` options
-- Sends attestation/assertion and client extension results to RP server
+- Sends attestation/assertion to RP server
+- Uses `/extensions/prepare` to get challenge and injects it in a second WebAuthn call
+- Logs `credProps` (standard extension) to show browser-recognized behavior
+- Sends out-of-band `accountProps` to extension server during validation
 
 ### 2. Relying Party Server (FastAPI)
 
 - Endpoints:
-    - `/register/begin` → Generates challenge and publicKey options
-    - `/register/complete` → Verifies attestation
-    - `/authenticate/begin` → Generates challenge and publicKey options
-    - `/authenticate/complete` → Verifies assertion
-- Challenge is embedded as a signed JWT
-- Validates `clientExtensions` during `/complete` flows
-- Calls Extension Server for custom validation (to validate `accountProps.token`)
+    - `POST /register/begin` → Generates challenge and publicKeyCredentialCreationOptions
+    - `POST /register/complete` → Verifies attestation
+    - `POST /authenticate/begin` → Generates challenge and publicKeyCredentialRequestOptions
+    - `POST /authenticate/complete` → Verifies assertion and returns session
+- JWTs validated on each call using audience (`rp-server`)
+- Validates attestation and assertion using FIDO2 libraries
 
 ### 3. Extension Server (FastAPI Stub)
 
-- Endpoint: `/extensions/validate`
-- Validates JWT token passed via `accountProps`
-- Returns claims like `account_id`, `sub` used by RP to bind credential
+- Endpoints:
+    - `POST /extensions/prepare` → Validates JWT and generates a challenge (nonce)
+    - `POST /extensions/validate` → Verifies challenge signature and `accountProps` (JWT)
+- Uses credential ID to fetch public key
+- Performs secure origin and challenge validation
 
 ### 4. Identity Provider (FastAPI Stub)
 
+- Endpoint: `POST /token/generate`
 - Authenticates the user based on `username/password`
-- Issues runtime JWT used in custom extension
-- Acts as a stand-in for a real IdP (e.g. Auth0, Keycloak)
+- Issues runtime-scoped JWTs for:
+    - RP Server (`aud: rp-server`)
+    - Extension Server (`aud: extension-server`)
 
+---
+
+## 🔐 Trust Model
+
+- JWTs are short-lived, audience-scoped, and cryptographically signed.
+- Custom business context (`accountProps`) is derived securely by the client and submitted manually to the extension
+  server.
+
+---
+
+## 🧾 Flow Summary
+
+### 1. Pre-authentication (JWT Issuance)
+
+- Browser authenticates with `IdP` using credentials (username, password).
+- IdP issues two JWTs:
+    - `access_token_rp` → `aud: rp-server`
+    - `access_token_ext` → `aud: extension-server`
+
+### 2. Passkey Registration
+
+- Client calls `POST /register/begin` to RP Server with RP token
+- RP returns `publicKeyCredentialCreationOptions`
+- Browser invokes `navigator.credentials.create(...)`
+- Authenticator returns attestation (clientDataJSON, attestationObject)
+- Client calls `POST /registration/complete`
+
+### 3. Passkey Authentication
+
+- Client calls `POST /authenticate/begin` to RP Server with RP token
+- RP returns `publicKeyCredentialRequestOptions`
+- Browser invokes `navigator.credentials.get(...)`
+- Authenticator signs challenge
+- Client calls `POST /authentication/complete`
+
+### 4. /extensions/prepare
+
+- Client calls `POST /extensions/prepare` with `access_token_ext`
+- Server returns challenge (short-lived, nonce-bound)
+- Client may also fetch or derive `accountProps` (JWT)
+
+### 5. navigator.credentials.get (Challenge Signing)
+
+- Second WebAuthn call with challenge from extension server
+- Browser calls `navigator.credentials.get({ publicKey: { challenge, allowCredentials }})`
+- Authenticator signs challenge
+
+### 6. /extensions/validate
+
+- Client sends signed challenge to `/extensions/validate` with:
+    - `authenticatorData`, `clientDataJSON`, `signature`
+    - `credentialId`
+    - `accountProps` (JWT)
+- Server verifies:
+    - JWT (issuer, audience, expiry)
+    - Challenge vs clientDataJSON.challenge
+    - Origin
+    - Signature
+
+![sequence.png](diagrams/sequence.png)
 ---
 
 ## ✅ Why Use JWTs for Challenge and Extensions?
 
-- **Challenge JWT**: Encapsulates registration/authentication challenge details securely and verifiably
-- **Account JWT**: Injected at runtime into the `accountProps` extension by the client
-    - Represents the domain-specific user context
-    - Prevents hardcoding or static configuration of contextual metadata
-- **Extension Server**: Independently verifies JWT signature and performs validation logic without coupling with core
-  authentication
+- **Challenge JWT**: Encapsulates challenge metadata securely and verifiably
+- **Account JWT**: Injected by client manually into validation step
+    - Represents domain-specific user context (e.g., accountId, tenantId, scopes)
+    - Avoids misuse of WebAuthn extension interface
+- **Extension Server**: Independently validates everything without affecting RP
 
 ---
 
-## 🔗 Flow Overview
+## 🚫 Why Not Use clientExtensionResults?
 
-### 🧾 **Pre-authentication Step – Runtime Token Issuance**
-
-> 🔐 *Mandatory prior to both registration and authentication*
-
-1. **Client** sends a request to the **Identity Provider (IdP)** via `/token/generate`, supplying:
-
-    - User credentials (e.g., `username`, `password`)
-2. **IdP** authenticates the user and responds with an **`account_token` (JWT)** containing:
-
-    - Claims like `sub` (subject) and `account_id`
-3. **Client** injects this `account_token` into the WebAuthn custom extension:
-
-    - `accountProps: { token }`
+- `accountProps` is **not a browser-recognized extension**
+- WebAuthn ignores unrecognized keys in extensions object
+- They are neither sent to authenticator nor echoed back to client
+- Instead: pass them manually via secure, client-controlled POST
 
 ---
 
-### 🔐 **Registration Flow**
+## 🧪 Security Notes
 
-1. **User** initiates registration from the client.
-2. **Client** sends a `username` to the **Relying Party (RP)** via `/register/begin`.
-3. **RP** responds with:
-
-    - `publicKeyCredentialCreationOptions` (WebAuthn registration options)
-    - `challenge_token` (JWT protecting the challenge state)
-4. **Client** builds the `publicKey` and adds extensions:
-
-    - `credProps` — requests credential discoverability info
-    - `accountProps: { token }` — embeds the JWT from IdP
-5. **User** completes biometric gesture using authenticator.
-6. **Browser** returns:
-
-    - Credential
-    - `clientExtensionResults` (includes `accountProps`)
-
-7. **RP**:
-
-    - Verifies challenge and attestation
-    - Extracts `accountProps.token`
-    - Validates the token with **extension server** via `/extensions/validate`
-    - Associates credential with the validated user context (`username`, `account_id`)
+- Do not trust unsigned or unverified claims (`accountProps`)
+- Validate all tokens (audience, issuer, expiry)
+- Always compare challenge from JWT with `clientDataJSON.challenge`
+- Always verify origin from `clientDataJSON.origin`
 
 ---
 
-### 🔐 **Authentication Flow**
+## 📎 Optional Enhancements (Future Work)
 
-1. **User** initiates login from the client.
-2. **Client** sends a `username` to **RP** via `/authenticate/begin`.
-3. **RP** responds with:
-
-    - `publicKeyCredentialRequestOptions`
-    - `challenge_token` (JWT encoding the state)
-4. **Client** invokes `navigator.credentials.get()` with extensions:
-    - `credProps`
-    - `accountProps: { token }` (same as before)
-5. **Browser** returns:
-
-    - WebAuthn assertion
-    - `clientExtensionResults.accountProps.token`
-6. **RP**:
-
-    - Validates the challenge and signature
-    - Retrieves and verifies `accountProps.token` via extension server
-    - Verifies subject (`sub`) matches expected user
-    - Grants access if all checks pass
-
----
-
-## 🧩 Custom Extension: `accountProps`
-
-- Injected by the client during registration/authentication
-- Carries a runtime-issued JWT token
-- Not processed by browser or authenticator
-- Parsed and validated by the RP server via the Extension Server
-
-```js
-function withExtensions(publicKey, token) {
-  return {
-    ...publicKey,
-    extensions: {
-      credProps: true,
-      accountProps: { token } // 🔒 custom JWT passed to RP
-    }
-  };
-}
-```
-
-#### Example of clientExtensionResults:
-
-```json
-{
-  "credProps": {
-    "rk": true
-  },
-  "accountProps": {
-    "token": "eyJhbGciOi..."
-  }
-}
-```
-
----
-
-## 🧠 What Is the Extension Server?
-
-- The "extension server" is **not** a FIDO component
-- It is a backend-only validation layer for custom extensions like `accountProps`
-- This separation supports domain-specific identity validation without affecting core WebAuthn ceremony
-
----
-
-## 📦 Benefits of This Architecture
-
-- ✅ Fully **compliant with WebAuthn Level 2+** extension specifications
-- ✅ Cleanly separates **authentication responsibilities** from **business/domain validation**
-- ✅ Demonstrates practical integration of:
-
-    - **Standard extensions** (`credProps`)
-    - **Custom extensions** (`accountProps`)
-- ✅ Enables secure, extensible, and testable WebAuthn extension handling — ideal for real-world passkey adoption and
-  experimentation
-
----
-
-## ✅ Summary Table
-
-| Extension ID   | Type     | Injected By | Processed By            | Validated Where                    |
-|----------------|----------|-------------|-------------------------|------------------------------------|
-| `credProps`    | Standard | Client      | Browser / Authenticator | RP (informational)                 |
-| `accountProps` | Custom   | Client      | ❌ Not processed         | ✅ RP server (via Extension Server) |
-
+- Add challenge replay protection (store nonce hash server-side)
+- Support token refresh flow for long-lived sessions
+- Add rate limiting or IP-bound tokens for extension flows
+- Add UI visibility into step-by-step flows

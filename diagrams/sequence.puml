@@ -1,70 +1,114 @@
 @startuml
-title Passkey Registration & Authentication with Custom WebAuthn Extension (Server Side Validation)
+title WebAuthn Passkey Flows with Custom Extension Server for Challenge Signing
 
 actor User
+participant "Browser (Client)" as Browser
+participant "Authenticator" as Auth
+participant "IdP (Pre-auth Server)" as IdP
+participant "RP Server (WebAuthn)" as RP
+participant "Custom Extension Server" as ExtServer
 
-participant "Web Client\n(Vanilla JS)" as Client
-participant "Identity Provider (IdP)\n(Stub/Future: Keycloak)" as IdP
-participant "Relying Party (RP) Server\n(FastAPI Backend)" as RP
-participant "Extension Server\n(Token Validator)" as ExtnServer
-
-== Pre-authentication ==
-note over User: Initial login to get scoped JWT
-User -> Client: Visits app
-Client -> IdP: POST /token/generate { username, password, account_id }
+== Pre-authentication Phase (JWT Issuance) ==
+User -> Browser: Opens app
+Browser -> IdP: POST /token/generate { username, password, account_id }
 IdP -> IdP: Validate credentials
-IdP --> Client: { runtime_jwt (exp, sub, aud) }
+note right of IdP: Generates 2 JWTs:\n• access_token_rp (aud: rp-server)\n• access_token_ext (aud: extension-server)
+IdP --> Browser: { access_token_rp, access_token_ext }
+note right of Browser
+Derive `accountProps` from claims in access_token_ext
 
-== Registration==
-note over User: Registration begins
-User -> Client: Enters username
-Client -> RP: POST /register/begin { username }
-RP -> RP: Generate challenge + options
-RP --> Client: { publicKeyCredentialCreationOptions, challenge_token }
-
-note right of Client
-- Inject standard + custom extensions into publicKey:
-  • credProps
-  • example.accountProps.token = runtime_jwt
+Example `accountProps` claims:
+• account_id
+• user_id / username
+• tenant_id (if multi-tenant)
+• roles or scopes
+• feature access toggles (if needed)
 end note
 
-Client -> Client: navigator.credentials.create({ publicKey })
-Client -> RP: POST /register/complete\n{ attestation, challenge_token, clientExtensions }
+== Passkey Registration ==
+User -> Browser: Visits app, triggers registration
+Browser -> RP: POST /register/begin
+note right of RP: Authorization: Bearer access_token_rp (aud: rp-server)
+RP -> RP: Verify JWT (issuer, aud, exp)
+RP --> Browser: publicKeyCredentialCreationOptions
+note right of Browser
+Injects standard extension `credProps` during registration
 
-RP -> RP: Validate attestation, challenge_token
-RP -> RP: Extract & verify clientExtensions
-
-alt accountProps exists
-  RP -> ExtnServer: POST /extensions/validate\n{ token }
-  ExtnServer --> RP: { status: valid, sub, account_id }
-end
-
-RP --> Client: Registration successful
-
-== Authentication Flow ==
-note over User: Login Begins
-User -> Client: Enters username
-
-Client -> RP: POST /authenticate/begin\n{ username }
-RP --> Client: publicKeyCredentialRequestOptions + challenge_token
-
-note right of Client
-- Inject standard + custom extensions into publicKey:
-  • credProps
-  • example.accountProps.token = runtime_jwt
+navigator.credentials.create({
+  publicKey: {
+    ...,
+    extensions: {
+      credProps: true
+    }
+  }
+})
 end note
 
-Client -> Client: navigator.credentials.get({ publicKey })
-Client -> RP: POST /authenticate/complete\n{ assertion, challenge_token, clientExtensions }
+Browser -> Auth: navigator.credentials.create(options)
+Auth -> Browser: Attestation response (clientDataJSON, attestationObject)
+note right of Browser
+Extracts credProps via:
 
-RP -> RP: Validate assertion, challenge_token
-RP -> RP: Extract & verify clientExtensions
+attestation.getClientExtensionResults().credProps
+end note
 
-alt accountProps exists
-  RP -> ExtnServer: POST /extensions/validate\n{ token }
-  ExtnServer --> RP: { status: valid, sub, account_id }
-end
 
-RP --> Client: Authentication successful
+Browser -> RP: POST /registration/complete
+note right of RP: Verifies attestation, stores credential
 
+== Passkey Authentication ==
+Browser -> RP: POST /authenticate/begin
+note right of RP: Authorization: Bearer access_token_rp (aud: rp-server)
+RP -> RP: Verify JWT (issuer, aud, exp)
+RP --> Browser: publicKeyCredentialRequestOptions
+Browser -> Auth: navigator.credentials.get(options)
+Auth -> Browser: Assertion (authenticatorData, clientDataJSON, signature)
+Browser -> RP: POST /authentication/complete
+note right of RP: Validates assertion, issues session
+
+== Custom Extension: Challenge Signing ==
+Browser -> ExtServer: POST /extensions/prepare
+note right of ExtServer: Authorization: Bearer access_token_ext (aud: extension-server)
+ExtServer -> ExtServer: Verify JWT, generate challenge (random, one-time, TTL-bound)
+ExtServer --> Browser: { challenge, metadata (optional) }
+
+Browser -> Auth: navigator.credentials.get(publicKeyOptions)
+note right of Browser
+Request includes:
+navigator.credentials.get({
+  publicKey: {
+    challenge: from Extension Server,
+    allowCredentials: [credentialId],
+    userVerification: "required"
+  }
+})
+⚠️ Note: browser-unrecognized extensions like `accountProps` are NOT included in the `extensions` field.
+Instead, they must be manually included in the request body to the extension server in the next step.
+end note
+
+note right of Auth: Authenticator signs the challenge securely
+Auth --> Browser: Assertion (authenticatorData, clientDataJSON, signature)
+
+Browser -> ExtServer: POST /extensions/validate
+note right of ExtServer
+Request includes:
+• signed challenge from extension server
+• credential ID (used to look up public key)
+• authenticatorData (from WebAuthn assertion)
+• clientDataJSON (with signed challenge)
+• signature (over authenticatorData + clientDataHash)
+• accountProps token (JWT, sent manually — not via WebAuthn)
+• extension metadata (optional, unsigned)
+end note
+
+note right of ExtServer
+Validation logic includes:
+• JWT verification (issuer, aud, exp)
+• Public key lookup by credential ID
+• Signature verification over authenticatorData + clientDataHash
+• Match challenge from JWT against clientDataJSON.challenge
+• Match expected origin with clientDataJSON.origin
+• Use `accountProps` JWT only as client-asserted context (derived during pre-authentication)
+end note
+ExtServer --> Browser: { status: valid | invalid, reason? }
 @enduml

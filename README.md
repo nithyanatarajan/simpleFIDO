@@ -1,23 +1,68 @@
 # 🛡️ FIDO2 + Passkey + WebAuthn Extension POC
 
-This project demonstrates a standards-compliant, modular proof-of-concept implementation of **Passkey-based
-authentication** using **FIDO2 + WebAuthn**, enriched with **standard and custom extensions**.
+This proof-of-concept demonstrates a complete full-stack implementation of secure, passkey-based authentication using
+the **FIDO2/WebAuthn standards**, including custom extensions and JWT-based stateless flows. The system cleanly
+separates responsibilities across four cooperating services:
 
-## 🎯 Goal
+- 🧠 **Identity Provider (IdP)** — authenticates users and issues scoped JWTs
+- 🔐 **Relying Party (RP)** — handles WebAuthn ceremonies and verification
+- 🧩 **Extension Server** — signs challenges and validates custom domain context (`accountProps`)
+- 🌐 **Web Client** — interacts with platform authenticators via the WebAuthn API
 
-Build a working full-cycle **FIDO2 + Passkey authentication** system with:
+## ✅ Highlights
 
-- Standards-compliant **WebAuthn credential registration and login**
-- Stateless architecture using **JWT-backed challenge validation**
-- Use of **WebAuthn extensions**:
-    - 🟢 `credProps` (standard)
-    - 🔵 `accountProps` (custom, domain-specific)
-- Clean separation of concerns across:
-    - Web client (Vanilla JS + WebAuthn APIs)
-    - Relying Party server (FastAPI-based passkey backend)
-    - Extension server (FastAPI stub for token validation)
-- Minimal setup with **in-memory storage** and **no persistent database**
-- Compatible with **real or virtual authenticators** (e.g., Chrome DevTools)
+- Stateless challenge verification using signed JWTs (no backend session storage)
+- Clean separation of auth logic vs domain/business logic
+- Browser-compatible demonstration of **custom WebAuthn extensions** (even if unrecognized)
+- Standards-compliant flow across **registration**, **authentication**, and **custom extension usage**
+
+## 🧱 Components
+
+### 🔹 1. `passkey_web` (Client)
+
+A Vanilla JS frontend powered by Vite. Handles:
+
+- Credential registration/authentication using the WebAuthn API
+- Injecting standard (e.g., `credProps`) and custom extensions (e.g., `accountProps`)
+- Posting results to RP and Extension servers
+
+### 🔹 2. `passkey_server` (Relying Party)
+
+A FastAPI service that:
+
+- Issues signed JWT challenges for registration and authentication
+- Verifies attestation and assertion responses
+- Stores credential metadata in-memory
+- Delegates domain-specific validation to the Extension Server
+
+### 🔹 3. `extension_server` (Custom Extension Verifier)
+
+A FastAPI microservice that:
+
+- Issues signed challenge tokens for WebAuthn
+- Verifies assertions and checks `accountProps` token
+- Operates independently of RP to enforce business-specific rules
+
+### 🔹 4. `stub_identity_provider` (IdP)
+
+A basic identity provider that:
+
+- Authenticates users via username/password
+- Issues scoped JWTs:
+    - `access_token_rp` for the RP Server
+    - `access_token_ext` for the Extension Server
+
+---
+
+## 🧩 Supported Extensions
+
+| Extension      | Type     | Purpose                           |
+|----------------|----------|-----------------------------------|
+| `credProps`    | Standard | Indicates whether key is resident |
+| `accountProps` | Custom   | JWT representing business context |
+
+> Note: `accountProps` is **browser-unrecognized** — it must be manually passed to the extension server after the
+> WebAuthn ceremony.
 
 ---
 
@@ -26,133 +71,41 @@ Build a working full-cycle **FIDO2 + Passkey authentication** system with:
 ```bash
 .
 ├── README.md                # ← Root documentation (this file)
+├── Overview.md              # Architecture + detailed walkthrough
 ├── passkey_web/             # Vanilla JS frontend (uses Vite)
-├── passkey_server/          # FastAPI backend (Relying Party server)
-├── extension_server/        # Stub extension verifier (FastAPI)
-└── ...
-```
+├── passkey_server/          # FastAPI RP server
+├── extension_server/        # FastAPI custom extension validator
+├── stub_identity_provider/  # Optional IdP stub
+````
 
 ---
 
-## 🧱 Components
+## 🚀 Getting Started
 
-### 🔹 1. `passkey_web` (Client)
+> Make sure Python and Node.js are installed.
 
-- Written in Vanilla JS + Vite
-- Interfaces with the browser's WebAuthn APIs:
-    - `navigator.credentials.create()` for registration
-    - `navigator.credentials.get()` for authentication
-- Injects **standard extensions** (`credProps`)
-- Injects **custom extension** (`accountProps`) containing a JWT
-- Sends WebAuthn response + `clientExtensionResults` to the backend
+### 1. Start the Identity Provider
 
-```js
-function withExtensions(publicKey, token) {
-  return {
-    ...publicKey,
-    extensions: {
-      credProps: true,
-      accountProps: { token }
-    }
-  };
-}
+```bash
+cd stub_identity_provider
+uvicorn idp:app --reload --port 8001
 ```
 
-### 🔹 2. `passkey_server` (Relying Party)
-
-* FastAPI-based server exposing:
-
-```http
-POST /register/begin
-POST /register/complete
-POST /authenticate/begin
-POST /authenticate/complete
-```
-
-- Issues WebAuthn challenges and options
-- Validates attestation / assertion
-- Extracts and verifies standard + custom extensions
-- For `accountProps`, delegates token validation to `extension_server`
-
-**Example `clientExtensionResults`:**
-
-```json
-{
-  "credProps": {
-    "rk": true
-  },
-  "accountProps": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }
-}
-```
-
-### 🔹 3. `extension_server` (Custom Extension Handler)
-
-- FastAPI service for JWT validation
-- Endpoint: `POST /extensions/validate`
-- Verifies signature using `EXTENSION_JWT_SECRET`
-- On success, returns user identity claims (`sub`, `account_id`)
-- On failure, returns 401 Unauthorized
-
-### 🔹 4. Identity Provider (IdP)
-
-- Optional stub that:
-    - Accepts `username/password`
-    - Returns a short-lived signed JWT (`account_token`)
-- The token is injected into `accountProps`
-
----
-
-## 🧪 Supported Extensions
-
-| Extension      | Type     | Purpose                               |
-|----------------|----------|---------------------------------------|
-| `credProps`    | Standard | Returns whether key is resident       |
-| `accountProps` | Custom   | JWT token for domain-specific context |
-
----
-
-## 🔹 Custom Extension: `accountProps`
-
-* Client-side only injection
-* **Not processed** by browser or authenticator
-* Parsed from `clientExtensionResults` by RP
-* Validated by a dedicated extension server
-
-### 🔧 Token Flow
-
-1. Client calls `/token/generate` from IdP
-2. Receives a JWT (e.g. `eyJhbGciOi...`)
-3. Injects this token into `accountProps`
-4. RP reads it, and sends it to `/extensions/validate`
-5. The response is used to bind credential or validate identity
-
----
-
-## ✨ Getting Started
-
-### 1. Start Extension Server
-
-Also see [extension_server/README.md](./extension_server/README.md) for more details.
+### 2. Start the Extension Server
 
 ```bash
 cd extension_server
-uvicorn main:app --reload --port 9000
+uvicorn extension_server:app --reload --port 9000
 ```
 
-### 2. Start passkey server
-
-Also see [passkey_server/README.md](./passkey_server/README.md) for more details.
+### 3. Start the Relying Party (RP) Server
 
 ```bash
 cd passkey_server
 uvicorn main:app --reload --port 8000
 ```
 
-### 3. Start Web Client
-
-Also see [passkey_web/README.md](./passkey_web/README.md) for more details.
+### 4. Start the Web Client
 
 ```bash
 cd passkey_web
@@ -160,25 +113,41 @@ npm install
 npm run dev
 ```
 
-### 4. Register and Login
+### 5. Open the App
 
-Open [http://localhost:5173](http://localhost:5173) in Google Chrome or a compatible browser.
-Use tools like Chrome Virtual Authenticator to simulate passkeys or test with physical devices like YubiKey.
+Visit [http://localhost:5173](http://localhost:5173) in Chrome or any browser that supports passkeys.
 
 #### 🧪 Testing Tips
 
-- Use **Chrome DevTools > WebAuthn panel** to simulate passkeys:
-    - Protocol: `CTAP2`
-    - Transport: `internal` or `USB`
-    - Enable user verification (optional)
+Use **Chrome DevTools > WebAuthn Panel** to simulate passkeys:
+
+* Protocol: `CTAP2`
+* Transport: `internal` or `USB`
+* Enable user verification if desired
+* Add RP ID: `localhost`
 
 ---
 
-## 🚧 Limitations
+## ⚠️ Known Limitations
 
-- In-memory store: credentials are lost on restart
-- No user registration or identity provider logic
-- No session/login persistence (beyond validation)
+* `accountProps` will **not appear** in `clientExtensionResults` — this is expected.
+* JWTs are short-lived and context-bound — no session state is stored.
+* Browser extensions are **not modified** or polyfilled — this is purely WebAuthn compliant.
+
+---
+
+## ✅ Standards Alignment
+
+This POC complies with:
+
+* [WebAuthn Level 2 Spec](https://www.w3.org/TR/webauthn-2/)
+* [FIDO2 CTAP2 Spec](https://fidoalliance.org/specs/fido-v2.1-rd-20220125/)
+* W3C best practices around:
+
+    * Challenge entropy
+    * Context binding (origin, RP ID)
+    * Key attestation and assertion verification
+    * Authenticator-agnostic compatibility
 
 ---
 
@@ -194,3 +163,4 @@ Use tools like Chrome Virtual Authenticator to simulate passkeys or test with ph
 * [MDN: WebAuthn Extensions](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API/WebAuthn_extensions)
 * [SimpleWebAuthn](https://simplewebauthn.dev)
 * [FIDO2: Server Guidance](https://developers.google.com/identity/passkeys/developer-guides/server-introduction)
+
