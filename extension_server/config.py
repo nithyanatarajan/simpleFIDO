@@ -6,7 +6,8 @@ load_dotenv()  # Load environment variables from .env
 
 class Config:
     # JWT settings
-    JWT_ISSUER = os.getenv("JWT_ISSUER", "identify-provider")
+    JWT_ORIGINAL_ISSUER = "identity-provider"
+    JWT_AUDIENCE = "extension-server"
     JWT_SECRET = os.getenv("JWT_SECRET", "super-secure-token")
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY", 60))
@@ -17,4 +18,3 @@ class Config:
 
     USER_KEY = "user"
     ACCOUNT_ID_KEY = "account_id"
-    ISSUER_KEY = "iss"

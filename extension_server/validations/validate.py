@@ -12,17 +12,14 @@ async def validate_runtime_token(token):
             token,
             Config.JWT_SECRET,
             algorithms=[Config.JWT_ALGORITHM],
-            leeway=Config.JWT_LEEWAY_SECONDS  # allows 30 seconds skew
+            leeway=Config.JWT_LEEWAY_SECONDS,  # allows 30 seconds skew
+            issuer=Config.JWT_ORIGINAL_ISSUER,
+            audience=Config.JWT_AUDIENCE,
         )
 
         # Extract claims
         user = payload.get(Config.USER_KEY)
         account_id = payload.get(Config.ACCOUNT_ID_KEY)
-        issuer = payload.get(Config.ISSUER_KEY)
-
-        # Validate issuer
-        if issuer != Config.JWT_ISSUER:
-            raise TokenValidationError("Invalid token issuer", status_code=403)
 
         # Validate required claims
         if not user or not account_id:
