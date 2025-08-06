@@ -8,4 +8,5 @@ class TokenRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    token: str
+    token_rp: str
+    token_extn: str
