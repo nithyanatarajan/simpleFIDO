@@ -1,0 +1,41 @@
+version: '3'
+
+tasks:
+
+  install:
+    desc: "Create virtualenvs and sync all dependencies"
+    cmds:
+      - cd idp_server && uv venv --allow-existing && uv sync --all-extras --dev
+      - cd extension_server && uv venv --allow-existing && uv sync --all-extras --dev
+      - cd passkey_server && uv venv --allow-existing && uv sync --all-extras --dev
+      - cd passkey_web && npm install
+
+  idp:
+    desc: Start Identity Provider (IdP)
+    dir: idp_server
+    cmd: uv run uvicorn idp:app --host 0.0.0.0 --port 8001 --reload
+
+  ext:
+    desc: Start Extension Server
+    dir: extension_server
+    cmd: uv run uvicorn extension_server:app --host 0.0.0.0 --port 9000 --reload
+
+  rp:
+    desc: Start Passkey (Relying Party) Server
+    dir: passkey_server
+    cmd: uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  client:
+    desc: Start Passkey Client (Vite + JS)
+    dir: passkey_web
+    cmd: npm run dev
+
+  dev:
+    desc: Run all servers and client in parallel
+    cmds:
+      - |
+        task idp &
+        task ext &
+        task rp &
+        task client &
+        wait

@@ -82,40 +82,34 @@ A basic identity provider that:
 
 ## 🚀 Getting Started
 
-> Make sure Python and Node.js are installed.
+> Ensure you have **Python 3.12+**, **Node.js**, and [`uv`](https://github.com/astral-sh/uv) installed.
+> All servers use `uv` as the dependency manager. Client uses `npm`.
 
-### 1. Start the Identity Provider
-
-```bash
-cd idp_server
-uvicorn idp:app --reload --port 8001
-```
-
-### 2. Start the Extension Server
+### 1. Install All Dependencies
 
 ```bash
-cd extension_server
-uvicorn extension_server:app --reload --port 9000
+task install
 ```
 
-### 3. Start the Relying Party (RP) Server
+### 2. Start All Services (Dev Mode)
+
+> Use the provided `Taskfile.yml` to spin up all components in parallel
 
 ```bash
-cd passkey_server
-uvicorn main:app --reload --port 8000
+task dev
 ```
 
-### 4. Start the Web Client
+This runs the following tasks in parallel:
 
-```bash
-cd passkey_web
-npm install
-npm run dev
-```
+* `idp_server` at [http://localhost:8001](http://localhost:8001)
+* `extension_server` at [http://localhost:9000](http://localhost:9000)
+* `passkey_server` (RP) at [http://localhost:8000](http://localhost:8000)
+* `passkey_web` (web frontend) at [http://localhost:5173](http://localhost:5173)
 
-### 5. Open the App
+### 3. Test the Flow
 
-Visit [http://localhost:5173](http://localhost:5173) in Chrome or any browser that supports passkeys.
+Open your browser at:
+[http://localhost:5173](http://localhost:5173)
 
 #### 🧪 Testing Tips
 
