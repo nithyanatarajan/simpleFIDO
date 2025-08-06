@@ -47,7 +47,10 @@ export async function registerPasskey(username, accountToken) {
   // ✅ 6. Call RP backend to complete registration
   const finishRes = await fetch(`${apiBase}/register/complete`, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accountToken}`
+    },
     body: JSON.stringify({attestation, challenge_token}),
   });
 

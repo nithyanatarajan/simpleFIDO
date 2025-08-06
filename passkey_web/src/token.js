@@ -1,4 +1,4 @@
-export async function getAccountToken(username, password, accountId) {
+export async function generateTokens(username, password, accountId) {
   const idpBase = import.meta.env.VITE_IDP_BASE_URL;
   const res = await fetch(`${idpBase}/token/generate`, {
     method: 'POST',
@@ -11,6 +11,6 @@ export async function getAccountToken(username, password, accountId) {
     throw new Error(`Token request failed: ${detail}`);
   }
 
-  const {token} = await res.json();
-  return token;
+  const {token_rp: tokenRP, token_extn: tokenExtn} = await res.json();
+  return {tokenRP, tokenExtn};
 }

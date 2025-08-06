@@ -1,7 +1,7 @@
 import {base64urlToBuffer, withExtensions, prepareAuthenticationAssertionPayload} from './utils.js';
 
 
-export async function loginWithPasskey(username, accountToken) {
+export async function authenticateWithPasskey(username, accountToken) {
   const apiBase = import.meta.env.VITE_API_BASE_URL;
 
   // 1. Begin authentication
@@ -29,7 +29,6 @@ export async function loginWithPasskey(username, accountToken) {
 
   // 3. Inject extensions
   const publicKeyWithExtensions = withExtensions(publicKey, accountToken);
-  console.log("PublicKey options passed to navigator.credentials.get:", publicKeyWithExtensions);
 
   // 4. Call WebAuthn
   const assertion = await navigator.credentials.get({
@@ -45,12 +44,11 @@ export async function loginWithPasskey(username, accountToken) {
 
   const finalRes = await fetch(`${apiBase}/authenticate/complete`, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      assertion: assertionPayload,
-      challenge_token,
-      account_token: accountToken,
-    }),
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accountToken}`
+    },
+    body: JSON.stringify({assertion: assertionPayload, challenge_token}),
   });
 
   if (!finalRes.ok) {

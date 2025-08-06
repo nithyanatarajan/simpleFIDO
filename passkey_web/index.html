@@ -4,11 +4,11 @@
     <meta charset="UTF-8"/>
     <title>Passkey POC</title>
     <script type="module">
-      import {handleGenerateToken, handleLogin, handleRegister} from './src/main.js';
+      import {handleGenerateToken, handleAuthenticate, handleRegister} from './src/main.js';
 
       window.handleGenerateToken = handleGenerateToken;
       window.handleRegister = handleRegister;
-      window.handleLogin = handleLogin;
+      window.handleAuthenticate = handleAuthenticate;
     </script>
     <link rel="stylesheet" href="./styles.css"/>
 </head>
@@ -33,9 +33,9 @@
 
 <!-- 🔓 Authentication -->
 <h3>3. Authenticate</h3>
-<form data-action="login">
+<form data-action="authenticate">
     <input name="username" placeholder="Enter username (email)" required/>
-    <button type="submit">Login</button>
+    <button type="submit">Authenticate</button>
 </form>
 
 <h3>📤 Output</h3>
