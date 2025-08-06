@@ -9,34 +9,63 @@
       window.handleGenerateToken = handleGenerateToken;
       window.handleRegister = handleRegister;
       window.handleAuthenticate = handleAuthenticate;
+
+      // Tab setup logic
+      const tabs = document.querySelectorAll('.tab-button');
+      const contents = document.querySelectorAll('.tab-content');
+
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => t.classList.remove('active'));
+          contents.forEach(c => c.classList.remove('active'));
+
+          tab.classList.add('active');
+          const target = document.querySelector(tab.dataset.target);
+          if (target) target.classList.add('active');
+        });
+      });
+
+      // Default tab activation
+      if (tabs.length > 0) {
+        tabs[0].click();
+      }
     </script>
     <link rel="stylesheet" href="./styles.css"/>
 </head>
 <body>
 <h2>🔐 Passkey + Extension Demo</h2>
 
-<!-- 🔑 Token Generation -->
-<h3>1. Generate Token</h3>
-<form data-action="generate">
-    <input name="username" placeholder="Enter username (email)" required/>
-    <input name="password" type="password" placeholder="Enter password" required/>
-    <input name="account_id" placeholder="Enter account ID" required/>
-    <button type="submit">Generate Token</button>
-</form>
+<div class="tabs">
+    <button class="tab-button" data-target="#generate-tab">Generate Token</button>
+    <button class="tab-button" data-target="#register-tab">Register</button>
+    <button class="tab-button" data-target="#authenticate-tab">Authenticate</button>
+</div>
 
-<!-- 📝 Registration -->
-<h3>2. Register</h3>
-<form data-action="register">
-    <input name="username" placeholder="Enter username (email)" required/>
-    <button type="submit">Register</button>
-</form>
+<div id="generate-tab" class="tab-content">
+    <h3>1. Generate Token</h3>
+    <form data-action="generate">
+        <input name="username" placeholder="Enter username (email)" required/>
+        <input name="password" type="password" placeholder="Enter password" required/>
+        <input name="account_id" placeholder="Enter account ID" required/>
+        <button type="submit">Generate Token</button>
+    </form>
+</div>
 
-<!-- 🔓 Authentication -->
-<h3>3. Authenticate</h3>
-<form data-action="authenticate">
-    <input name="username" placeholder="Enter username (email)" required/>
-    <button type="submit">Authenticate</button>
-</form>
+<div id="register-tab" class="tab-content">
+    <h3>2. Register</h3>
+    <form data-action="register">
+        <input name="username" placeholder="Enter username (email)" required/>
+        <button type="submit">Register</button>
+    </form>
+</div>
+
+<div id="authenticate-tab" class="tab-content">
+    <h3>3. Authenticate</h3>
+    <form data-action="authenticate">
+        <input name="username" placeholder="Enter username (email)" required/>
+        <button type="submit">Authenticate</button>
+    </form>
+</div>
 
 <h3>📤 Output</h3>
 <pre id="output"></pre>
