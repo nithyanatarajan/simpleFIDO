@@ -27,9 +27,8 @@ end note
 
 == Passkey Registration ==
 User -> Browser: Visits app, triggers registration
-Browser -> RP: POST /register/begin
-note right of RP: Authorization: Bearer access_token_rp (aud: rp-server)
-RP -> RP: Verify JWT (issuer, aud, exp)
+Browser -> RP: POST /register/begin { username }
+note right of RP: No token verification here — anonymous challenge issuance
 RP --> Browser: publicKeyCredentialCreationOptions
 note right of Browser
 Injects standard extension `credProps` during registration
@@ -54,17 +53,26 @@ end note
 
 
 Browser -> RP: POST /registration/complete
-note right of RP: Verifies attestation, stores credential
+note right of RP
+• Verifies attestation response
+• Verifies access_token_rp (issuer, aud, exp)
+• Binds credential to user
+end note
 
 == Passkey Authentication ==
-Browser -> RP: POST /authenticate/begin
-note right of RP: Authorization: Bearer access_token_rp (aud: rp-server)
-RP -> RP: Verify JWT (issuer, aud, exp)
+Browser -> RP: POST /authenticate/begin { username }
+note right of RP: No token verification here
 RP --> Browser: publicKeyCredentialRequestOptions
+
 Browser -> Auth: navigator.credentials.get(options)
 Auth -> Browser: Assertion (authenticatorData, clientDataJSON, signature)
+
 Browser -> RP: POST /authentication/complete
-note right of RP: Validates assertion, issues session
+note right of RP
+• Verifies assertion
+• Verifies access_token_rp (issuer, aud, exp)
+• Issues session
+end note
 
 == Custom Extension: Challenge Signing ==
 Browser -> ExtServer: POST /extensions/prepare
@@ -110,5 +118,7 @@ Validation logic includes:
 • Match expected origin with clientDataJSON.origin
 • Use `accountProps` JWT only as client-asserted context (derived during pre-authentication)
 end note
+
 ExtServer --> Browser: { status: valid | invalid, reason? }
+
 @enduml

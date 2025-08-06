@@ -37,46 +37,52 @@ Build a fully working, standards-compliant **passkey-based authentication** syst
 
 ### 1. Web Client (Vanilla JS + Vite)
 
-- Form-based UI for passkey registration & login
-- Calls `navigator.credentials.create()` and `navigator.credentials.get()`
-- Sends attestation/assertion to RP server
-- Uses `/extensions/prepare` to get challenge and injects it in a second WebAuthn call
-- Logs `credProps` (standard extension) to show browser-recognized behavior
-- Sends out-of-band `accountProps` to extension server during validation
+- Handles UI for registration, login, and extension-based signing
+- Calls `navigator.credentials.create()` and `navigator.credentials.get()` for WebAuthn ceremonies
+- Sends attestation and assertion data to RP endpoints
+- Fetches a signed challenge via `/extensions/prepare` for custom signing
+- Injects that challenge in a second WebAuthn call
+- Logs `credProps` (standard extension) to demonstrate browser-supported extension handling
+- Manually includes `accountProps` (JWT) in the final call to `/extensions/validate` — not passed through the browser
 
 ### 2. Relying Party Server (FastAPI)
 
 - Endpoints:
-    - `POST /register/begin` → Generates challenge and publicKeyCredentialCreationOptions
-    - `POST /register/complete` → Verifies attestation
-    - `POST /authenticate/begin` → Generates challenge and publicKeyCredentialRequestOptions
-    - `POST /authenticate/complete` → Verifies assertion and returns session
-- JWTs validated on each call using audience (`rp-server`)
-- Validates attestation and assertion using FIDO2 libraries
+    - `POST /register/begin` → Generates publicKeyCredentialCreationOptions (JWT not verified here)
+    - `POST /register/complete` → Verifies attestation and validates `access_token_rp`
+    - `POST /authenticate/begin` → Generates publicKeyCredentialRequestOptions (JWT not verified here)
+    - `POST /authenticate/complete` → Verifies assertion and validates `access_token_rp`
+- Uses FIDO2-compliant libraries for challenge and signature verification
+- Maintains in-memory credential store for the POC (no persistent state)
 
 ### 3. Extension Server (FastAPI Stub)
 
 - Endpoints:
-    - `POST /extensions/prepare` → Validates JWT and generates a challenge (nonce)
-    - `POST /extensions/validate` → Verifies challenge signature and `accountProps` (JWT)
-- Uses credential ID to fetch public key
-- Performs secure origin and challenge validation
+    - `POST /extensions/prepare` → Verifies `access_token_ext`, returns signed challenge + metadata
+    - `POST /extensions/validate` → Validates signature over the challenge, verifies `accountProps`
+- Validates:
+    - Challenge authenticity and expiry
+    - Signature over `authenticatorData` + `clientDataHash`
+    - RP origin from `clientDataJSON.origin`
+    - Custom claims in `accountProps` JWT (roles, tenant, scopes, etc.)
+- Uses credential ID to fetch the correct public key
 
 ### 4. Identity Provider (FastAPI Stub)
 
 - Endpoint: `POST /token/generate`
-- Authenticates the user based on `username/password`
-- Issues runtime-scoped JWTs for:
-    - RP Server (`aud: rp-server`)
-    - Extension Server (`aud: extension-server`)
+- Performs user authentication using `username` and `password`
+- Issues two scoped, signed JWTs:
+    - `access_token_rp` → for the RP Server (`aud: rp-server`)
+    - `access_token_ext` → for the Extension Server (`aud: extension-server`)
 
 ---
 
 ## 🔐 Trust Model
 
-- JWTs are short-lived, audience-scoped, and cryptographically signed.
-- Custom business context (`accountProps`) is derived securely by the client and submitted manually to the extension
-  server.
+- JWTs are short-lived, audience-restricted, and signed using secure keys
+- The client derives `accountProps` from `access_token_ext` claims — these are not transmitted via WebAuthn APIs
+- All signature and token validations are done at the point of **final submission**, not at challenge generation
+- Only the **extension server** handles business context (`accountProps`) — the RP is agnostic to it
 
 ---
 
@@ -84,50 +90,85 @@ Build a fully working, standards-compliant **passkey-based authentication** syst
 
 ### 1. Pre-authentication (JWT Issuance)
 
-- Browser authenticates with `IdP` using credentials (username, password).
-- IdP issues two JWTs:
-    - `access_token_rp` → `aud: rp-server`
-    - `access_token_ext` → `aud: extension-server`
+- The browser authenticates with the Identity Provider (`/token/generate`) using `username`, `password`, and
+  `account_id`.
+- IdP issues two scoped JWTs:
+    - `access_token_rp` → with `aud: rp-server`
+    - `access_token_ext` → with `aud: extension-server`
+- The client derives `accountProps` from `access_token_ext` claims for custom extension usage.
 
 ### 2. Passkey Registration
 
-- Client calls `POST /register/begin` to RP Server with RP token
-- RP returns `publicKeyCredentialCreationOptions`
-- Browser invokes `navigator.credentials.create(...)`
-- Authenticator returns attestation (clientDataJSON, attestationObject)
-- Client calls `POST /registration/complete`
+- Client initiates registration via `POST /register/begin` (no token verified at this stage).
+- RP returns `publicKeyCredentialCreationOptions`, optionally injecting standard extensions like `credProps`.
+- Browser invokes:
+  ```js
+  navigator.credentials.create({ publicKey: options });
+  ```
+
+* Authenticator returns an attestation response (`clientDataJSON`, `attestationObject`).
+* Client submits attestation to `POST /registration/complete` along with `access_token_rp`.
+* RP verifies:
+
+    * Attestation integrity
+    * `access_token_rp` (issuer, audience, expiry)
+    * Registers and binds the credential to the user
 
 ### 3. Passkey Authentication
 
-- Client calls `POST /authenticate/begin` to RP Server with RP token
-- RP returns `publicKeyCredentialRequestOptions`
-- Browser invokes `navigator.credentials.get(...)`
-- Authenticator signs challenge
-- Client calls `POST /authentication/complete`
+* Client initiates login via `POST /authenticate/begin` (no token verified at this stage).
+* RP returns `publicKeyCredentialRequestOptions`.
+* Browser invokes:
 
-### 4. /extensions/prepare
+  ```js
+  navigator.credentials.get({ publicKey: options });
+  ```
+* Authenticator returns signed assertion (`authenticatorData`, `clientDataJSON`, `signature`).
+* Client submits assertion to `POST /authentication/complete` along with `access_token_rp`.
+* RP verifies:
 
-- Client calls `POST /extensions/prepare` with `access_token_ext`
-- Server returns challenge (short-lived, nonce-bound)
-- Client may also fetch or derive `accountProps` (JWT)
+    * Assertion signature
+    * `access_token_rp` (issuer, audience, expiry)
+    * Issues a session on success
 
-### 5. navigator.credentials.get (Challenge Signing)
+### 4. Extension Challenge Preparation
 
-- Second WebAuthn call with challenge from extension server
-- Browser calls `navigator.credentials.get({ publicKey: { challenge, allowCredentials }})`
-- Authenticator signs challenge
+* Client calls `POST /extensions/prepare` with `access_token_ext`.
+* Extension server verifies the JWT and returns a time-limited, signed challenge.
+* Optional: The server may also return extension metadata or context claims.
 
-### 6. /extensions/validate
+### 5. Challenge Signing via WebAuthn
 
-- Client sends signed challenge to `/extensions/validate` with:
-    - `authenticatorData`, `clientDataJSON`, `signature`
-    - `credentialId`
-    - `accountProps` (JWT)
-- Server verifies:
-    - JWT (issuer, audience, expiry)
-    - Challenge vs clientDataJSON.challenge
-    - Origin
-    - Signature
+* Client calls `navigator.credentials.get()` again — this time with the challenge from the extension server.
+* Example:
+
+  ```js
+  navigator.credentials.get({
+    publicKey: {
+      challenge: fromExtensionServer,
+      allowCredentials: [...],
+      userVerification: 'required'
+    }
+  });
+  ```
+* Authenticator signs the challenge securely.
+
+### 6. Extension Validation
+
+* Client calls `POST /extensions/validate` with:
+
+    * `authenticatorData`, `clientDataJSON`, `signature`
+    * `credentialId`
+    * `accountProps` JWT (manually added)
+    * (optional) extension metadata
+
+* Extension server verifies:
+
+    * JWT (`accountProps`) validity: issuer, audience, expiry
+    * Signature over `authenticatorData` + `clientDataHash`
+    * Challenge match with `clientDataJSON.challenge`
+    * RP origin consistency from `clientDataJSON.origin`
+    * Credential binding by looking up public key for `credentialId`
 
 ![sequence.png](diagrams/sequence.png)
 ---

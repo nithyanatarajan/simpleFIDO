@@ -16,53 +16,63 @@ separates responsibilities across four cooperating services:
 - Browser-compatible demonstration of **custom WebAuthn extensions** (even if unrecognized)
 - Standards-compliant flow across **registration**, **authentication**, and **custom extension usage**
 
+---
+
 ## 🧱 Components
 
 ### 🔹 1. `passkey_web` (Client)
 
-A Vanilla JS frontend powered by Vite. Handles:
+A minimal Vanilla JS single-page app powered by Vite. It is responsible for:
 
-- Credential registration/authentication using the WebAuthn API
-- Injecting standard (e.g., `credProps`) and custom extensions (e.g., `accountProps`)
-- Posting results to RP and Extension servers
+- Triggering credential registration and authentication via the WebAuthn API
+- Injecting both standard extensions (`credProps`) and custom context (`accountProps`)
+- Posting attestation and assertion data to the RP Server
+- Managing the challenge lifecycle for extension signing via the Extension Server
 
 ### 🔹 2. `passkey_server` (Relying Party)
 
-A FastAPI service that:
+A FastAPI-based WebAuthn Relying Party that:
 
-- Issues signed JWT challenges for registration and authentication
-- Verifies attestation and assertion responses
-- Stores credential metadata in-memory
-- Delegates domain-specific validation to the Extension Server
+- Generates signed JWT challenges for registration and authentication (`/begin`)
+- Verifies attestation and assertion responses (`/complete`)
+- Stores credential metadata in-memory (no persistence)
+- Validates `access_token_rp` during `complete` calls only
+- Delegates business-specific checks (e.g., tenant validation) to the Extension Server
 
 ### 🔹 3. `extension_server` (Custom Extension Verifier)
 
 A FastAPI microservice that:
 
-- Issues signed challenge tokens for WebAuthn
-- Verifies assertions and checks `accountProps` token
-- Operates independently of RP to enforce business-specific rules
+- Issues short-lived, signed challenges for custom WebAuthn flows
+- Verifies assertions from a second WebAuthn invocation
+- Validates the `accountProps` JWT (manually submitted by the client)
+- Performs full signature and origin validation independent of the RP
+- Encapsulates business logic like tenant scoping or feature gating
 
-### 🔹 4. `idp_server` (IdP)
+### 🔹 4. `idp_server` (Identity Provider Stub)
 
-A basic identity provider that:
+A basic identity provider stub that:
 
-- Authenticates users via username/password
-- Issues scoped JWTs:
-    - `access_token_rp` for the RP Server
-    - `access_token_ext` for the Extension Server
+- Authenticates users using `username/password`
+- Issues scoped runtime JWTs:
+    - `access_token_rp` → for use with the RP Server (aud: `rp-server`)
+    - `access_token_ext` → for use with the Extension Server (aud: `extension-server`)
+- Enables stateless challenge validation without session storage
 
 ---
 
 ## 🧩 Supported Extensions
 
-| Extension      | Type     | Purpose                           |
-|----------------|----------|-----------------------------------|
-| `credProps`    | Standard | Indicates whether key is resident |
-| `accountProps` | Custom   | JWT representing business context |
+| Extension ID   | Type     | Purpose                                                                  | Processed By            | Usable In (create/get)  |
+|----------------|----------|--------------------------------------------------------------------------|-------------------------|-------------------------|
+| `credProps`    | Standard | Request discoverability of credential (resident key status)              | User Agent              | create()                |
+| `accountProps` | Custom   | Attach domain-specific user context (e.g., account_id, roles, tenant_id) | Custom Extension Server | get() *(manually sent)* |
 
-> Note: `accountProps` is **browser-unrecognized** — it must be manually passed to the extension server after the
-> WebAuthn ceremony.
+### 📌 Notes:
+
+* `credProps` is processed by the browser and included in `clientExtensionResults`.
+* `accountProps` is **not processed** by the browser and **must be sent manually** to your Extension Server — typically
+  via POST after `navigator.credentials.get()` completes.
 
 ---
 
