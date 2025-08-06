@@ -43,7 +43,7 @@ A FastAPI microservice that:
 - Verifies assertions and checks `accountProps` token
 - Operates independently of RP to enforce business-specific rules
 
-### 🔹 4. `stub_identity_provider` (IdP)
+### 🔹 4. `idp_server` (IdP)
 
 A basic identity provider that:
 
@@ -75,7 +75,7 @@ A basic identity provider that:
 ├── passkey_web/             # Vanilla JS frontend (uses Vite)
 ├── passkey_server/          # FastAPI RP server
 ├── extension_server/        # FastAPI custom extension validator
-├── stub_identity_provider/  # Optional IdP stub
+├── idp_server/  # Optional IdP stub
 ````
 
 ---
@@ -87,7 +87,7 @@ A basic identity provider that:
 ### 1. Start the Identity Provider
 
 ```bash
-cd stub_identity_provider
+cd idp_server
 uvicorn idp:app --reload --port 8001
 ```
 

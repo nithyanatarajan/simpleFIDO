@@ -53,7 +53,7 @@ Server will be live at: [http://localhost:9000](http://localhost:9000)
 
 ## 🧪 Generate a Test JWT
 
-Use `/token/generate` from [Identity Provider](../stub_identity_provider/README.md) to create a JWT token for testing.
+Use `/token/generate` from [Identity Provider](../idp_server/README.md) to create a JWT token for testing.
 
 ---
 
