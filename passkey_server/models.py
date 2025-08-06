@@ -17,4 +17,12 @@ class AuthBeginRequest(BaseModel):
 class AuthCompleteRequest(BaseModel):
     assertion: dict
     challenge_token: str
-    account_token: str
+
+
+class BeginResponse(BaseModel):
+    publicKey: dict
+    challenge_token: str
+
+
+class CompleteResponse(BaseModel):
+    status: str
