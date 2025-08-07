@@ -10,7 +10,7 @@ class Config:
     JWT_AUDIENCE = "extension-server"
     JWT_SECRET = os.getenv("JWT_SECRET", "super-secure-token")
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-    JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY", 60))
+    JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY", "60"))  # Default to 60 seconds
     JWT_LEEWAY_SECONDS = 30
 
     CHALLENGE_TTL_SECONDS = 120
