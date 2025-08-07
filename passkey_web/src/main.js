@@ -94,6 +94,7 @@ export async function handleExtensionFlow(event) {
   }
 
   try {
+    output.textContent = 'Extension signing in progress...\n';
     const result = await runExtensionSigningFlow(username, accountToken);
     output.textContent += '✅ Extension signing completed successfully.\n';
     output.textContent += `\n${JSON.stringify(result, null, 2)}\n`;
