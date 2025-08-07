@@ -1,7 +1,7 @@
 import {registerPasskey} from './register.js';
 import {authenticateWithPasskey} from './auth.js';
 import {generateTokens} from './token.js';
-import {initiateExtensionSigning, validateExtensionSignature} from './extensions.js';
+import {runExtensionSigningFlow} from './extensions.js';
 
 const AccountTokenRPSessionKey = 'accountTokenRP';
 const AccountTokenExtnSessionKey = 'accountTokenExtn';
@@ -45,8 +45,9 @@ export async function handleRegister(event) {
   }
 
   try {
-    await registerPasskey(username, accountToken);
+    const result = await registerPasskey(username, accountToken);
     output.textContent = '✅ Registered successfully.';
+    output.textContent += `\n${JSON.stringify(result, null, 2)}\n`;
   } catch (err) {
     console.error(err);
     output.textContent = `❌ Error: ${err?.response?.data?.detail || err.message || 'Unknown error'}`;
@@ -66,8 +67,9 @@ export async function handleAuthenticate(event) {
   }
 
   try {
-    await authenticateWithPasskey(username, accountToken);
+    const result = await authenticateWithPasskey(username, accountToken);
     output.textContent = '✅ Authentication successful.';
+    output.textContent += `\n${JSON.stringify(result, null, 2)}\n`;
   } catch (err) {
     console.error(err);
     output.textContent = `❌ Error: ${err?.response?.data?.detail || err.message || 'Unknown error'}`;
@@ -87,23 +89,14 @@ export async function handleExtensionFlow(event) {
   }
 
   try {
-    output.textContent = '🔄 Calling /extensions/prepare...\n';
-    const prepareResponse = await initiateExtensionSigning(username, accountToken);
-    output.textContent += `✅ Called /extensions/prepare response\n`;
-    output.textContent += `${JSON.stringify(prepareResponse, null, 2)}\n`;
-
-
-    output.textContent += '🔄 Calling /extensions/validate...\n';
-    const validateResponse = await validateExtensionSignature(username, accountToken);
-    output.textContent += `✅ Called /extensions/validate\n`;
-    output.textContent += `${JSON.stringify(validateResponse, null, 2)}\n`;
-
+    const result = await runExtensionSigningFlow(username, accountToken);
+    output.textContent += '✅ Extension signing completed successfully.\n';
+    output.textContent += `\n${JSON.stringify(result, null, 2)}\n`;
   } catch (err) {
     console.error(err);
     output.textContent = `❌ Error: ${err?.response?.data?.detail || err.message || 'Unknown error'}`;
   }
 }
-
 
 const handlers = {
   generate: handleGenerateToken,
