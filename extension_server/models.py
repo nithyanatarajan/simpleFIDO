@@ -1,19 +1,26 @@
 from pydantic import BaseModel
 
 
-class RegResponse(BaseModel):
+class ExtensionRegistrationRequest(BaseModel):
+    username: str
+
+
+class ExtensionRegistrationResponse(BaseModel):
     status: str
     user: str
     account_id: str
-    org: str = None
-    region: str = None
+    challenge: str
+    issued_at: int  # Unix timestamp
     registered: bool = None
 
 
-class AuthResponse(BaseModel):
+class ExtensionValidationRequest(BaseModel):
+    username: str
+    credential: dict
+
+
+class ExtensionValidationResponse(BaseModel):
     status: str
     user: str
     account_id: str
-    org: str = None
-    region: str = None
     authenticated: bool = None

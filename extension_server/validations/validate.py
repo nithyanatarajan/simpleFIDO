@@ -2,10 +2,10 @@
 import jwt
 
 from config import Config
-from exceptions import TokenValidationError
+from exceptions.errors import TokenExpiredError, MissingClaimsError, InvalidTokenError, UsernameMismatchError
 
 
-async def validate_runtime_token(token):
+async def validate_runtime_token(token, current_user: str) -> tuple[str, str]:
     try:
         # Decode and verify the JWT (signature + expiry)
         payload = jwt.decode(
@@ -18,17 +18,20 @@ async def validate_runtime_token(token):
         )
 
         # Extract claims
-        user = payload.get(Config.USER_KEY)
+        payload_user = payload.get(Config.USER_KEY)
         account_id = payload.get(Config.ACCOUNT_ID_KEY)
 
         # Validate required claims
-        if not user or not account_id:
-            raise TokenValidationError("Missing required claims", status_code=400)
+        if not payload_user or not account_id:
+            raise MissingClaimsError()
 
-        return user, account_id
+        if payload_user != current_user:
+            raise UsernameMismatchError()
+
+        return payload_user, account_id
 
     except jwt.ExpiredSignatureError:
-        raise TokenValidationError("Token expired", status_code=401)
+        raise TokenExpiredError()
 
     except jwt.InvalidTokenError:
-        raise TokenValidationError("Invalid token", status_code=401)
+        raise InvalidTokenError("Invalid token")

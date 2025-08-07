@@ -13,6 +13,8 @@ class Config:
     JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY", 60))
     JWT_LEEWAY_SECONDS = 30
 
+    CHALLENGE_TTL_SECONDS = 120
+
     # CORS (optional)
     ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
