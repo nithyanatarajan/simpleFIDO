@@ -14,6 +14,11 @@ export async function handleGenerateToken(event) {
   const password = form.password?.value.trim();
   const accountId = form.account_id?.value.trim();
   const output = document.querySelector('#output');
+  if (username) {
+    document.querySelectorAll('.username').forEach(el => {
+      el.value = username;
+    });
+  }
 
   if (!username || !password || !accountId) {
     output.textContent = '⚠️ Username, password, and accountId are required.';
