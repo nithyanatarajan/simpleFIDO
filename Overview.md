@@ -58,14 +58,18 @@ Build a fully working, standards-compliant **passkey-based authentication** syst
 ### 3. Extension Server (FastAPI Stub)
 
 - Endpoints:
-    - `POST /extensions/prepare` → Verifies `access_token_ext`, returns signed challenge + metadata
-    - `POST /extensions/validate` → Validates signature over the challenge, verifies `accountProps`
+    - `POST /extensions/prepare` → Verifies `access_token_ext`, generates, stores and returns a one-time challenge
+    - `POST /extensions/validate` → Verifies `access_token_ext`, validates the signed challenge from the authenticator
+
 - Validates:
-    - Challenge authenticity and expiry
-    - Signature over `authenticatorData` + `clientDataHash`
-    - RP origin from `clientDataJSON.origin`
-    - Custom claims in `accountProps` JWT (roles, tenant, scopes, etc.)
-- Uses credential ID to fetch the correct public key
+    - Ensures JWT token (`access_token_extn`) is valid and contains expected claims (e.g., `sub`, `account_id`)
+    - Validates user identity matches token subject
+    - Verifies challenge round-trip via `clientDataJSON.challenge`
+
+- Design:
+    - Keeps Extension Server isolated from RP logic
+    - Does **not** perform attestation or store credential public key (handled by RP)
+    - Relies solely on pre-auth token and client-submitted data for validation
 
 ### 4. Identity Provider (FastAPI Stub)
 
@@ -130,45 +134,61 @@ Build a fully working, standards-compliant **passkey-based authentication** syst
     * Assertion signature
     * `access_token_rp` (issuer, audience, expiry)
     * Issues a session on success
+      Here's a revised and accurate version of your **extension journey**, aligned with the actual minimal yet
+      production-grade implementation you've built:
 
 ### 4. Extension Challenge Preparation
 
-* Client calls `POST /extensions/prepare` with `access_token_ext`.
-* Extension server verifies the JWT and returns a time-limited, signed challenge.
-* Optional: The server may also return extension metadata or context claims.
+* Client calls `POST /extensions/prepare` with the `access_token_extn` (JWT) in Authorization header.
+* Extension server:
+    - Verifies the JWT and ensures the `sub` (username) matches the request.
+    - Generates a base64url-encoded challenge.
+    - Stores the challenge temporarily (with TTL) associated with the user.
+    - Returns:
+        - `challenge`
+        - `user`, `account_id` (from token)
+        - Optional: `issued_at`, `registered` flag, extension metadata.
 
 ### 5. Challenge Signing via WebAuthn
 
-* Client calls `navigator.credentials.get()` again — this time with the challenge from the extension server.
-* Example:
+* Client calls `navigator.credentials.get()` using the challenge received from the extension server.
 
-  ```js
-  navigator.credentials.get({
-    publicKey: {
-      challenge: fromExtensionServer,
-      allowCredentials: [...],
-      userVerification: 'required'
-    }
-  });
-  ```
-* Authenticator signs the challenge securely.
+```js
+navigator.credentials.get({
+  publicKey: {
+    challenge: fromExtensionServer,
+  }
+});
+````
+
+* Authenticator securely signs the challenge and returns the credential, including:
+
+    * `authenticatorData`
+    * `clientDataJSON`
+    * `signature`
+    * `credentialId`
+    * `userHandle` (optional)
 
 ### 6. Extension Validation
 
 * Client calls `POST /extensions/validate` with:
 
-    * `authenticatorData`, `clientDataJSON`, `signature`
-    * `credentialId`
-    * `accountProps` JWT (manually added)
-    * (optional) extension metadata
+    * `access_token_extn` in Authorization header
+    * Payload containing:
 
-* Extension server verifies:
+        * `username`
+        * The full `credential` object returned from `navigator.credentials.get()`
 
-    * JWT (`accountProps`) validity: issuer, audience, expiry
-    * Signature over `authenticatorData` + `clientDataHash`
-    * Challenge match with `clientDataJSON.challenge`
-    * RP origin consistency from `clientDataJSON.origin`
-    * Credential binding by looking up public key for `credentialId`
+* Extension server performs:
+
+    * Token validation: ensures JWT is valid and subject matches `username`
+    * Challenge retrieval: pops stored challenge for the user
+    * Challenge round-trip check:
+
+        * Decodes `clientDataJSON`
+        * Compares embedded challenge with stored one
+
+> Challenge reuse or replay is prevented via in-memory eviction after validation
 
 ![sequence.png](diagrams/sequence.png)
 ---
@@ -197,13 +217,3 @@ Build a fully working, standards-compliant **passkey-based authentication** syst
 - Do not trust unsigned or unverified claims (`accountProps`)
 - Validate all tokens (audience, issuer, expiry)
 - Always compare challenge from JWT with `clientDataJSON.challenge`
-- Always verify origin from `clientDataJSON.origin`
-
----
-
-## 📎 Optional Enhancements (Future Work)
-
-- Add challenge replay protection (store nonce hash server-side)
-- Support token refresh flow for long-lived sessions
-- Add rate limiting or IP-bound tokens for extension flows
-- Add UI visibility into step-by-step flows

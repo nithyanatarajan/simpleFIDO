@@ -28,7 +28,7 @@ end note
 == Passkey Registration ==
 User -> Browser: Visits app, triggers registration
 Browser -> RP: POST /register/begin { username }
-note right of RP: No token verification here — anonymous challenge issuance
+note right of RP: No token verification here
 RP --> Browser: publicKeyCredentialCreationOptions
 note right of Browser
 Injects standard extension `credProps` during registration
@@ -75,21 +75,28 @@ note right of RP
 end note
 
 == Custom Extension: Challenge Signing ==
-Browser -> ExtServer: POST /extensions/prepare
-note right of ExtServer: Authorization: Bearer access_token_ext (aud: extension-server)
-ExtServer -> ExtServer: Verify JWT, generate challenge (random, one-time, TTL-bound)
-ExtServer --> Browser: { challenge, metadata (optional) }
+Browser -> ExtServer: POST /extensions/prepare { username }
+note right of Browser: Authorization: Bearer access_token_ext (aud: extension-server)
+ExtServer -> ExtServer: JWT verification and challenge generation
+note right of ExtServer
+- JWT verification (issuer, aud, exp of access_token_ext)
+- Extract accountProps from JWT claims
+- Generate challenge (random, one-time, TTL-bound)
+end note
+
+ExtServer --> Browser: { challenge, metadata }
 
 Browser -> Auth: navigator.credentials.get(publicKeyOptions)
 note right of Browser
 Request includes:
 navigator.credentials.get({
   publicKey: {
-    challenge: from Extension Server,
-    allowCredentials: [credentialId],
-    userVerification: "required"
+    challenge: from Extension Server
   }
 })
+end note
+
+note right of Browser
 ⚠️ Note: browser-unrecognized extensions like `accountProps` are NOT included in the `extensions` field.
 Instead, they must be manually included in the request body to the extension server in the next step.
 end note
@@ -97,26 +104,12 @@ end note
 note right of Auth: Authenticator signs the challenge securely
 Auth --> Browser: Assertion (authenticatorData, clientDataJSON, signature)
 
-Browser -> ExtServer: POST /extensions/validate
+Browser -> ExtServer: POST /extensions/validate { username, credential }
+note right of Browser: Authorization: Bearer access_token_ext (aud: extension-server)
+ExtServer -> ExtServer: JWT verification and challenge validation
 note right of ExtServer
-Request includes:
-• signed challenge from extension server
-• credential ID (used to look up public key)
-• authenticatorData (from WebAuthn assertion)
-• clientDataJSON (with signed challenge)
-• signature (over authenticatorData + clientDataHash)
-• accountProps token (JWT, sent manually — not via WebAuthn)
-• extension metadata (optional, unsigned)
-end note
-
-note right of ExtServer
-Validation logic includes:
-• JWT verification (issuer, aud, exp)
-• Public key lookup by credential ID
-• Signature verification over authenticatorData + clientDataHash
-• Match challenge from JWT against clientDataJSON.challenge
-• Match expected origin with clientDataJSON.origin
-• Use `accountProps` JWT only as client-asserted context (derived during pre-authentication)
+- JWT verification (issuer, aud, exp of access_token_ext)
+- Match challenge from JWT against clientDataJSON.challenge
 end note
 
 ExtServer --> Browser: { status: valid | invalid, reason? }
