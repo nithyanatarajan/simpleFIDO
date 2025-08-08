@@ -1,0 +1,117 @@
+@startuml
+title WebAuthn Passkey Flows with Custom Extension Server for Challenge Signing
+
+actor User
+participant "Browser (Client)" as Browser
+participant "Authenticator" as Auth
+participant "IdP (Pre-auth Server)" as IdP
+participant "RP Server (WebAuthn)" as RP
+participant "Custom Extension Server" as ExtServer
+
+== Pre-authentication Phase (JWT Issuance) ==
+User -> Browser: Opens app
+Browser -> IdP: POST /token/generate { username, password, account_id }
+IdP -> IdP: Validate credentials
+note right of IdP: Generates 2 JWTs:\n• access_token_rp (aud: rp-server)\n• access_token_ext (aud: extension-server)
+IdP --> Browser: { access_token_rp, access_token_ext }
+note right of Browser
+Derive `accountProps` from claims in access_token_ext
+
+Example `accountProps` claims:
+• account_id
+• user_id / username
+• tenant_id (if multi-tenant)
+• roles or scopes
+• feature access toggles (if needed)
+end note
+
+== Passkey Registration ==
+User -> Browser: Visits app, triggers registration
+Browser -> RP: POST /register/begin { username }
+note right of RP: No token verification here
+RP --> Browser: publicKeyCredentialCreationOptions
+note right of Browser
+Injects standard extension `credProps` during registration
+
+navigator.credentials.create({
+  publicKey: {
+    ...,
+    extensions: {
+      credProps: true
+    }
+  }
+})
+end note
+
+Browser -> Auth: navigator.credentials.create(options)
+Auth -> Browser: Attestation response (clientDataJSON, attestationObject)
+note right of Browser
+Extracts credProps via:
+
+attestation.getClientExtensionResults().credProps
+end note
+
+
+Browser -> RP: POST /registration/complete
+note right of RP
+• Verifies attestation response
+• Verifies access_token_rp (issuer, aud, exp)
+• Binds credential to user
+end note
+
+== Passkey Authentication ==
+Browser -> RP: POST /authenticate/begin { username }
+note right of RP: No token verification here
+RP --> Browser: publicKeyCredentialRequestOptions
+
+Browser -> Auth: navigator.credentials.get(options)
+Auth -> Browser: Assertion (authenticatorData, clientDataJSON, signature)
+
+Browser -> RP: POST /authentication/complete
+note right of RP
+• Verifies assertion
+• Verifies access_token_rp (issuer, aud, exp)
+• Issues session
+end note
+
+== Custom Extension: Challenge Signing ==
+Browser -> ExtServer: POST /extensions/prepare { username }
+note right of Browser: Authorization: Bearer access_token_ext (aud: extension-server)
+ExtServer -> ExtServer: JWT verification and challenge generation
+note right of ExtServer
+- JWT verification (issuer, aud, exp of access_token_ext)
+- Extract accountProps from JWT claims
+- Generate challenge (random, one-time, TTL-bound)
+end note
+
+ExtServer --> Browser: { challenge, metadata }
+
+Browser -> Auth: navigator.credentials.get(publicKeyOptions)
+note right of Browser
+Request includes:
+navigator.credentials.get({
+  publicKey: {
+    challenge: from Extension Server
+  }
+})
+end note
+
+note right of Browser
+⚠️ Note: browser-unrecognized extensions like `accountProps` are NOT included in the `extensions` field.
+Instead, they must be manually included in the request body to the extension server in the next step.
+end note
+
+note right of Auth: Authenticator signs the challenge securely
+Auth --> Browser: Assertion (authenticatorData, clientDataJSON, signature)
+
+Browser -> ExtServer: POST /extensions/validate { username, credential }
+note right of Browser: Authorization: Bearer access_token_ext (aud: extension-server)
+ExtServer -> ExtServer: JWT verification and challenge validation
+note right of ExtServer
+- JWT verification (issuer, aud, exp of access_token_ext)
+- Match challenge from JWT against clientDataJSON.challenge
+end note
+
+ExtServer --> Browser: { status: valid | invalid, reason? }
+
+@enduml
